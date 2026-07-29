@@ -1,0 +1,16 @@
+# Nie przypinamy claude-agent-sdk na sztywno (SPEC sekcja 5) — API zmienia się
+# szybko, a diagnostyka (app/diagnostyka.py) i tak wypisuje faktyczną
+# zainstalowaną wersję oraz wynik introspekcji ClaudeAgentOptions przy starcie.
+claude-agent-sdk>=0.2
+
+fastapi>=0.115
+uvicorn[standard]>=0.30
+python-dotenv>=1.0
+pyyaml>=6.0
+
+# import eksportu LinkedIn (Faza 3): CSV/XLSX/JSON
+pandas>=2.2
+openpyxl>=3.1
+
+# upload plików w FastAPI (formularz importu korpusu, Faza 3)
+python-multipart>=0.0.9

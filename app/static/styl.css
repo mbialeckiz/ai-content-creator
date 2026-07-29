@@ -1,0 +1,269 @@
+:root {
+  --tlo: #f4f5f7;
+  --tlo-panelu: #ffffff;
+  --tekst: #1c1f24;
+  --tekst-przygaszony: #5b6270;
+  --linia: #d8dbe0;
+  --akcent: #1f5eff;
+  --akcent-tekst: #ffffff;
+  --ok: #1a7f4e;
+  --ok-tlo: #e7f6ee;
+  --ostrzezenie: #8a5a00;
+  --ostrzezenie-tlo: #fff4e0;
+  --blad: #b3261e;
+  --blad-tlo: #fdecea;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+  color: var(--tekst);
+  background: var(--tlo);
+  min-width: 1280px;
+}
+
+code, pre, textarea.monospace, .monospace {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+}
+
+button {
+  font-family: inherit;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+button:focus-visible,
+a:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--akcent);
+  outline-offset: 2px;
+}
+
+.uklad {
+  display: flex;
+  min-height: 100vh;
+}
+
+.naglowek {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1.25rem;
+  background: var(--tlo-panelu);
+  border-bottom: 1px solid var(--linia);
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3.25rem;
+  z-index: 10;
+}
+
+.naglowek h1 {
+  font-size: 1.05rem;
+  margin: 0;
+}
+
+.zuzycie {
+  color: var(--tekst-przygaszony);
+  font-size: 0.9rem;
+}
+
+.nawigacja {
+  width: 220px;
+  flex-shrink: 0;
+  background: var(--tlo-panelu);
+  border-right: 1px solid var(--linia);
+  padding: 3.25rem 0 0 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+}
+
+.nawigacja ul {
+  list-style: none;
+  margin: 0.5rem 0 0 0;
+  padding: 0;
+}
+
+.nawigacja button.zakladka {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 0.65rem 1.25rem;
+  color: var(--tekst);
+  font-size: 0.95rem;
+  border-left: 3px solid transparent;
+}
+
+.nawigacja button.zakladka:hover {
+  background: var(--tlo);
+}
+
+.nawigacja button.zakladka.aktywna {
+  border-left-color: var(--akcent);
+  background: var(--tlo);
+  font-weight: 600;
+}
+
+.nawigacja .diagnostyka-link {
+  padding: 1rem;
+  border-top: 1px solid var(--linia);
+}
+
+.nawigacja .diagnostyka-link button {
+  width: 100%;
+  background: none;
+  border: 1px solid var(--linia);
+  border-radius: 6px;
+  padding: 0.5rem;
+  color: var(--tekst);
+}
+
+.obszar-glowny {
+  margin-left: 220px;
+  margin-top: 3.25rem;
+  padding: 1.5rem 2rem;
+  flex: 1;
+  max-width: 960px;
+}
+
+.karta {
+  background: var(--tlo-panelu);
+  border: 1px solid var(--linia);
+  border-radius: 8px;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1rem;
+}
+
+.sprawdzenie {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  padding: 0.6rem 0;
+  border-bottom: 1px solid var(--linia);
+}
+
+.sprawdzenie:last-child {
+  border-bottom: none;
+}
+
+.status-ikona {
+  flex-shrink: 0;
+  width: 1.4rem;
+  height: 1.4rem;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.status-ok .status-ikona { background: var(--ok-tlo); color: var(--ok); }
+.status-ostrzezenie .status-ikona { background: var(--ostrzezenie-tlo); color: var(--ostrzezenie); }
+.status-blad .status-ikona { background: var(--blad-tlo); color: var(--blad); }
+
+.sprawdzenie-tresc strong {
+  display: block;
+}
+
+.szczegoly {
+  color: var(--tekst-przygaszony);
+  font-size: 0.9rem;
+  margin-top: 0.15rem;
+}
+
+.instrukcja-naprawy {
+  margin-top: 0.35rem;
+  font-size: 0.9rem;
+  color: var(--blad);
+}
+
+.liczniki {
+  display: flex;
+  gap: 1.5rem;
+  margin-bottom: 1rem;
+}
+
+.licznik {
+  background: var(--tlo-panelu);
+  border: 1px solid var(--linia);
+  border-radius: 8px;
+  padding: 0.75rem 1.25rem;
+}
+
+.licznik .wartosc {
+  font-size: 1.4rem;
+  font-weight: 700;
+}
+
+.licznik .etykieta {
+  color: var(--tekst-przygaszony);
+  font-size: 0.85rem;
+}
+
+.placeholder {
+  color: var(--tekst-przygaszony);
+  padding: 2rem 0;
+}
+
+.ostrzezenie-koszt {
+  background: var(--ostrzezenie-tlo);
+  color: var(--ostrzezenie);
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.9rem;
+  margin-bottom: 0.75rem;
+}
+
+.przycisk-glowny {
+  background: var(--akcent);
+  color: var(--akcent-tekst);
+  border: none;
+  border-radius: 6px;
+  padding: 0.55rem 1.1rem;
+}
+
+.przycisk-glowny:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.przycisk-drugorzedny {
+  background: none;
+  border: 1px solid var(--linia);
+  border-radius: 6px;
+  padding: 0.55rem 1.1rem;
+  color: var(--tekst);
+}
+
+.log-przebiegu {
+  background: #0f1115;
+  color: #d7dae0;
+  border-radius: 6px;
+  padding: 0.75rem;
+  font-size: 0.85rem;
+  max-height: 260px;
+  overflow-y: auto;
+  margin-top: 0.75rem;
+}
+
+.log-przebiegu .wpis {
+  padding: 0.15rem 0;
+}
+
+.log-przebiegu .wpis.blad {
+  color: #ff8a80;
+}

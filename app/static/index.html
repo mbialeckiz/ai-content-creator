@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Forces DC Content Studio</title>
+  <link rel="stylesheet" href="/static/styl.css" />
+</head>
+<body>
+  <div class="uklad">
+    <header class="naglowek">
+      <h1>Forces DC Content Studio</h1>
+      <span class="zuzycie">Zużycie dziś: pojawi się w kolejnej fazie</span>
+    </header>
+
+    <nav class="nawigacja">
+      <ul id="lista-zakladek">
+        <li><button class="zakladka" data-zakladka="asystent">Asystent</button></li>
+        <li><button class="zakladka" data-zakladka="plan">Plan</button></li>
+        <li><button class="zakladka" data-zakladka="posty">Posty</button></li>
+        <li><button class="zakladka" data-zakladka="materialy">Materiały</button></li>
+        <li><button class="zakladka" data-zakladka="styl">Styl</button></li>
+        <li><button class="zakladka" data-zakladka="korpus">Korpus</button></li>
+      </ul>
+      <div class="diagnostyka-link">
+        <button data-zakladka="diagnostyka">Sprawdź środowisko</button>
+      </div>
+    </nav>
+
+    <main class="obszar-glowny" id="obszar-glowny">
+      <!-- Zawartość wstrzykiwana przez app.js -->
+    </main>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
