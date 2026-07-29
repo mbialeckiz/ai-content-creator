@@ -9,6 +9,13 @@ blokada NDA w aplikacji nie ma czego wykrywać.]
 
 ## Czego NIE wolno publikować
 
-[DO UZUPEŁNIENIA: lista nazw klientów i innych ciągów wrażliwych objętych
-NDA. Puste w tej wersji rusztowania — uzupełnij przed uruchomieniem
-produkcyjnym, inaczej test NDA z SPEC 10.2 nie ma podstawy do działania.]
+Backend wykrywa frazy z listy poniżej w poleceniu **przed** wysłaniem
+czegokolwiek do modelu czy do sieci (SPEC 10.2–10.3, `app/pliki.py`
+funkcja `wykryj_fraze_nda`). Format pozycji: pogrubiona część linii to
+dokładna fraza do wykrycia (dopasowanie bez rozróżniania wielkości liter).
+Dopisz każdą nazwę klienta/hyperscalera objętego NDA jako osobną pozycję.
+
+- **Hyperscaler Nordics AS** — przykład formatu, nazwa fikcyjna wyłącznie
+  do testów mechanizmu blokady. [DO UZUPEŁNIENIA: zastąp prawdziwą listą
+  klientów Forces DC objętych NDA przed uruchomieniem produkcyjnym —
+  bez tego test NDA z SPEC 10.2 nie ma czego wykrywać.]

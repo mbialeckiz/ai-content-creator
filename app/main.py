@@ -14,13 +14,14 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
 # Musi wykonać się przed jakimkolwiek importem, który buduje ClaudeAgentOptions:
 # CLI Claude Code czyta ANTHROPIC_API_KEY ze środowiska procesu nadrzędnego
 # (SPEC sekcja 5), więc zmienna musi tam być, zanim padnie pierwsze zapytanie.
 load_dotenv()
 
-from app import diagnostyka, silnik  # noqa: E402 — patrz komentarz wyżej
+from app import diagnostyka, pliki, silnik  # noqa: E402 — patrz komentarz wyżej
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("forces_content_studio")
@@ -88,3 +89,36 @@ async def api_silnik_test() -> StreamingResponse:
     """Jedyny tryb agenta w Fazie 1 — potwierdza, że SDK faktycznie działa
     (SPEC sekcja 12, Faza 1). Tryby Strateg/Redaktor/Wywiad przychodzą później."""
     return StreamingResponse(_strumien_testu_silnika(), media_type="text/event-stream")
+
+
+class PolecenieRedaktora(BaseModel):
+    brief: str
+
+
+async def _strumien_redaktora(brief: str) -> AsyncIterator[str]:
+    async for zdarzenie in silnik.uruchom_redaktor(katalog_danych(), brief):
+        if zdarzenie["typ"] == "wynik" and not zdarzenie["bledny"] and zdarzenie.get("sciezka_pliku"):
+            sciezka_pelna = katalog_danych() / zdarzenie["sciezka_pliku"]
+            try:
+                zdarzenie["post"] = dataclasses.asdict(pliki.wczytaj_wygenerowany_post(sciezka_pelna))
+            except OSError as blad:
+                logger.error("Nie udało się odczytać zapisanego posta %s: %s", sciezka_pelna, blad)
+                zdarzenie["post"] = None
+        yield _jako_sse(zdarzenie)
+
+
+@app.post("/api/redaktor", response_model=None)
+async def api_redaktor(polecenie: PolecenieRedaktora) -> JSONResponse | StreamingResponse:
+    """Tryb Redaktor (SPEC 8.2). Blokada NDA (SPEC 10.2–10.3) działa tutaj,
+    synchronicznie, przed jakimkolwiek wywołaniem SDK — nie tylko instrukcją
+    w prompcie modelu (SPEC 10.1, kryterium akceptacji frontendu)."""
+    brief = polecenie.brief.strip()
+    if not brief:
+        return JSONResponse({"blad": "Brief nie może być pusty — opisz, o czym ma być post."}, status_code=400)
+
+    fraza_nda = pliki.wykryj_fraze_nda(brief, katalog_danych())
+    if fraza_nda:
+        logger.warning("Zablokowano polecenie zawierające frazę objętą NDA.")
+        return JSONResponse({"zablokowane_nda": True, "fraza": fraza_nda})
+
+    return StreamingResponse(_strumien_redaktora(brief), media_type="text/event-stream")

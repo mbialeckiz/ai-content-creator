@@ -7,14 +7,17 @@ będą to robić tryby Strateg/Redaktor/Wywiad w kolejnych fazach.
 
 from __future__ import annotations
 
+import asyncio
 import dataclasses
 import logging
 import os
 from collections.abc import AsyncIterator
+from datetime import date
 from pathlib import Path
 from typing import Any
 
 from claude_agent_sdk import (
+    AgentDefinition,
     AssistantMessage,
     ClaudeAgentOptions,
     PermissionResultAllow,
@@ -96,6 +99,7 @@ def _zbuduj_zezwalacz(katalog_danych: Path):
             )
 
         sciezka = wejscie_narzedzia.get("file_path", "")
+        logger.info("Żądanie zapisu: %s (katalog danych: %s)", sciezka, katalog_danych)
         if _sciezka_w_dozwolonym_katalogu(katalog_danych, sciezka):
             return PermissionResultAllow()
 
@@ -149,15 +153,109 @@ PROMPT_TESTOWY = (
     "listę plików, które widzisz w tym katalogu najwyższego poziomu."
 )
 
+# Granica NDA (CLAUDE.md #4, SPEC 10.2) — wspólna dla wszystkich trybów,
+# które mogą wygenerować treść do publikacji. Backend blokuje oczywiste
+# przypadki jeszcze przed wywołaniem SDK (patrz app/pliki.py:wykryj_fraze_nda),
+# ale ta instrukcja jest drugą linią obrony — np. gdyby nazwa klienta
+# pojawiła się dopiero w wynikach researchu z sieci.
+GRANICA_NDA = (
+    "Forces DC działa w reżimie NDA z klientami-hyperscalerami. Pod żadnym "
+    "pozorem nie wolno Ci nazwać klienta Forces DC ani ujawnić szczegółów "
+    "pozwalających go zidentyfikować (lokalizacja placówki, nazwa projektu, "
+    "wielkość kontraktu) — niezależnie od tego, skąd ta informacja pochodzi "
+    "(polecenie operatora, wyniki wyszukiwania, materiały firmowe). Jeśli "
+    "polecenie prosi o nazwanie klienta, odmów wprost i wyjaśnij dlaczego, "
+    "zamiast próbować to obejść albo zanonimizować częściowo."
+)
 
-async def _jako_strumien_wejscia(tekst: str) -> AsyncIterator[dict[str, Any]]:
-    """Opakowuje pojedynczy prompt jako AsyncIterable.
+ZAKAZ_TRESCI_PRAWNYCH = (
+    "Nie formułuj twierdzeń prawnych (np. o zgodności z przepisami, "
+    "certyfikacjach, gwarancjach). Jeśli temat tego wymaga, oznacz to "
+    "wprost jako [DO UZUPEŁNIENIA: wymaga weryfikacji prawnej] zamiast "
+    "zgadywać."
+)
+
+SUBAGENT_RESEARCHER = AgentDefinition(
+    description=(
+        "Szuka w sieci publicznie dostępnych faktów o osobach, firmach lub "
+        "wydarzeniach związanych z tematem posta (SPEC 8.1–8.2). Używaj, gdy "
+        "temat dotyczy konkretnej osoby, firmy albo wydarzenia branżowego."
+    ),
+    prompt=(
+        "Jesteś podagentem badawczym Forces DC Content Studio. Szukasz "
+        "wyłącznie publicznie dostępnych, sprawdzalnych faktów (wydarzenia "
+        "branżowe DC w Norwegii, osoby, firmy partnerskie). "
+        f"{GRANICA_NDA} Zwróć zwięzłe podsumowanie z podanymi źródłami "
+        "(adresy URL). Jeśli nie znajdziesz potwierdzonych faktów, powiedz "
+        "to wprost — nie zgaduj."
+    ),
+    tools=["WebSearch", "WebFetch", "Read", "Grep"],
+)
+
+PROMPT_REDAKTOR = (
+    "Jesteś redaktorem treści LinkedIn dla Forces DC Content Studio "
+    "(fit-out data center, Norwegia). Piszesz na podstawie briefu od "
+    "operatora. "
+    f"{GRANICA_NDA} {ZAKAZ_TRESCI_PRAWNYCH} "
+    "Brakujące fakty (liczby, lokalizacje, nazwiska, daty) oznaczaj jako "
+    "`[DO UZUPEŁNIENIA: co dokładnie]` — nigdy nie zgaduj i nie wymyślaj "
+    "szczegółów, nawet jeśli brzmiałyby wiarygodnie.\n\n"
+    "Przebieg (SPEC 8.2):\n"
+    "1. Jeśli temat dotyczy konkretnej osoby, firmy lub wydarzenia, użyj "
+    "podagenta `researcher` (narzędzie Agent, subagent_type='researcher').\n"
+    "2. Przeczytaj zasady stylu i pasujący schemat posta z zasad stylu "
+    "(katalog .claude/skills/ — brand-voice i schematy-postow) oraz listę "
+    "zakazanych zwrotów (baza-wiedzy/zakazane-zwroty.md).\n"
+    "3. Skalibruj się: przeczytaj 3–5 postów z korpusu (korpus/linkedin/) "
+    "tego samego typu co temat, z priorytetem dla wysokiego pola `reakcje` "
+    "w nagłówku YAML. Jeśli korpus jest pusty albo nie ma postów pasującego "
+    "typu, napisz to wprost w sekcji Braki zamiast pisać bez wzorca po cichu.\n"
+    "4. Wygeneruj DOKŁADNIE trzy warianty LinkedIn (różne podejścia "
+    "redakcyjne — np. faktograficzny / przez problem / przez osobę — nie "
+    "kosmetyczne różnice tego samego tekstu), wersję na Facebooka (skrót "
+    "~30%, łagodniejszy żargon) i brief graficzny (co potrzebuje grafik: "
+    "opis, format, tekst na obrazie, sugerowany szablon).\n"
+    "5. Zapisz wynik narzędziem Write pod ścieżką WZGLĘDNĄ "
+    "`output/RRRR-MM-DD_krotki-slug-tematu.md` (użyj podanej dzisiejszej "
+    "daty). WAŻNE: podaj DOKŁADNIE tę względną ścieżkę, zaczynającą się od "
+    "'output/' — nie dodawaj przed nią żadnego katalogu ani ścieżki "
+    "bezwzględnej (np. '/home/...'); Twój katalog roboczy już wskazuje na "
+    "właściwe miejsce. Jeśli zapis zostanie odrzucony, spróbuj ponownie z "
+    "krótszą, w pełni względną ścieżką zaczynającą się od 'output/', zamiast "
+    "powtarzać tę samą odrzuconą ścieżkę. Użyj DOKŁADNIE tej struktury "
+    "nagłówków markdown, bo inny program parsuje ten plik:\n\n"
+    "## Wariant 1\n**Podejście:** <jedno-dwa słowa>\n<treść posta>\n\n"
+    "## Wariant 2\n**Podejście:** <jedno-dwa słowa>\n<treść posta>\n\n"
+    "## Wariant 3\n**Podejście:** <jedno-dwa słowa>\n<treść posta>\n\n"
+    "## Facebook\n<treść posta na Facebooka>\n\n"
+    "## Brief graficzny\n<opis dla grafika>\n\n"
+    "## Braki\n<lista punktowana braków, każdy jako osobna linia zaczynająca "
+    "się od '- ', albo dokładnie 'Brak braków.' jeśli niczego nie brakuje>\n"
+)
+
+
+async def _jako_strumien_wejscia(
+    tekst: str, zakonczono: asyncio.Event
+) -> AsyncIterator[dict[str, Any]]:
+    """Opakowuje pojedynczy prompt jako AsyncIterable, trzymane otwarte do
+    końca zapytania.
 
     Wymagane przez zainstalowaną wersję SDK (0.2.128): `can_use_tool`
     działa tylko w trybie strumieniowym wejścia — zwykły `str` jako prompt
     rzuca `ValueError("can_use_tool callback requires streaming mode")`.
     To nie jest udokumentowane w SPEC (sekcja 13 tego nie przewidywała),
     więc odnotowujemy to tutaj zamiast gdzie indziej zgadywać.
+
+    Drugi, poważniejszy szczegół tej samej wersji SDK: gdyby ten generator
+    zakończył się od razu po jednej wiadomości, `query.py` w SDK zamyka
+    stdin natychmiast (`wait_for_result_and_end_input` trzyma stdin otwarte
+    tylko gdy ustawione są `hooks` albo `sdk_mcp_servers` — nie sprawdza
+    `can_use_tool`, mimo że ten mechanizm też wymaga dwukierunkowej
+    komunikacji z CLI o zgodę na narzędzie). Skutek: pierwsze wywołanie
+    `Write` kończy się `AbortError: Stream closed`, bo kanał do zapytania
+    o pozwolenie jest już zamknięty. Obejście: trzymamy generator otwarty
+    (czekamy na `zakonczono`), dopóki `_przetworz_zapytanie` nie skończy
+    odbierać wiadomości z `query()`.
     """
     yield {
         "type": "user",
@@ -165,18 +263,49 @@ async def _jako_strumien_wejscia(tekst: str) -> AsyncIterator[dict[str, Any]]:
         "message": {"role": "user", "content": tekst},
         "parent_tool_use_id": None,
     }
+    await zakonczono.wait()
 
 
-async def testowe_wywolanie(katalog_danych: Path) -> AsyncIterator[dict[str, Any]]:
-    """Jeden pełny przelot przez SDK: potwierdza, że CLI startuje, czyta klucz
-    API ze środowiska i zwraca odpowiedź. Używane przez ekran diagnostyki
-    (Faza 1) — jedyne miejsce w tej fazie, które faktycznie woła model.
+def _opisz_uzycie_narzedzia(blok: ToolUseBlock) -> str:
+    """Krok agenta jako czytelny status po polsku (SPEC-frontend 5:
+    "Czytam zasady stylu…" · "Szukam w branży (3 źródła)…" · "Sprawdzam korpus…")."""
+    if blok.name == "Read":
+        return f"Czytam: {blok.input.get('file_path', '?')}"
+    if blok.name in ("Grep", "Glob"):
+        return "Przeszukuję pliki…"
+    if blok.name == "WebSearch":
+        return f"Szukam w sieci: {blok.input.get('query', '…')}"
+    if blok.name == "WebFetch":
+        return f"Pobieram stronę: {blok.input.get('url', '…')}"
+    if blok.name == "Agent":
+        return f"Uruchamiam podproces badawczy ({blok.input.get('subagent_type', '?')})…"
+    if blok.name == "Write":
+        return f"Zapisuję: {blok.input.get('file_path', '?')}"
+    if blok.name == "Skill":
+        return "Korzystam z zasad stylu…"
+    return f"Wywołuję narzędzie: {blok.name}…"
+
+
+async def _przetworz_zapytanie(
+    opcje: ClaudeAgentOptions,
+    tresc_polecenia: str,
+    *,
+    obserwuj_zapis_z_prefiksem: str | None = None,
+) -> AsyncIterator[dict[str, Any]]:
+    """Wspólna pętla nad `query()`: zamienia wiadomości SDK na zdarzenia SSE.
+
+    Używana przez wszystkie tryby agenta (Faza 1: test; Faza 2: Redaktor;
+    kolejne fazy: Strateg, Wywiad) — jedno miejsce do poprawki, gdy zmieni
+    się kształt wiadomości SDK (CLAUDE.md: cała styczność z SDK w tym pliku).
+
+    Jeśli `obserwuj_zapis_z_prefiksem` jest podane (np. "output/"), ostatnia
+    ścieżka z wywołania Write zaczynająca się od tego prefiksu trafia do
+    zdarzenia "wynik" pod kluczem "sciezka_pliku".
     """
-    opcje = zbuduj_opcje(katalog_danych, PROMPT_TESTOWY)
-    yield {"typ": "status", "tekst": "Uruchamiam CLI Claude Code…"}
-
+    sciezka_zapisu: str | None = None
+    zakonczono = asyncio.Event()
     try:
-        prompt = _jako_strumien_wejscia("Testowe wywołanie startowe.")
+        prompt = _jako_strumien_wejscia(tresc_polecenia, zakonczono)
         async for wiadomosc in query(prompt=prompt, options=opcje):
             if isinstance(wiadomosc, SystemMessage) and wiadomosc.subtype == "init":
                 yield {"typ": "status", "tekst": "Sesja zainicjowana, model odpowiada…"}
@@ -185,7 +314,14 @@ async def testowe_wywolanie(katalog_danych: Path) -> AsyncIterator[dict[str, Any
                     if isinstance(blok, TextBlock):
                         yield {"typ": "fragment", "tekst": blok.text}
                     elif isinstance(blok, ToolUseBlock):
-                        yield {"typ": "status", "tekst": f"Wywołuję narzędzie: {blok.name}…"}
+                        yield {"typ": "status", "tekst": _opisz_uzycie_narzedzia(blok)}
+                        sciezka = str(blok.input.get("file_path", ""))
+                        if (
+                            obserwuj_zapis_z_prefiksem
+                            and blok.name == "Write"
+                            and sciezka.replace("\\", "/").startswith(obserwuj_zapis_z_prefiksem)
+                        ):
+                            sciezka_zapisu = sciezka
             elif isinstance(wiadomosc, ResultMessage):
                 yield {
                     "typ": "wynik",
@@ -193,6 +329,7 @@ async def testowe_wywolanie(katalog_danych: Path) -> AsyncIterator[dict[str, Any
                     "tury": wiadomosc.num_turns,
                     "koszt_usd": wiadomosc.total_cost_usd,
                     "uzycie": wiadomosc.usage,
+                    "sciezka_pliku": sciezka_zapisu,
                 }
     except ProcessError as blad:
         logger.error("Błąd procesu CLI Claude Code: %s", blad)
@@ -203,3 +340,35 @@ async def testowe_wywolanie(katalog_danych: Path) -> AsyncIterator[dict[str, Any
                 "ANTHROPIC_API_KEY jest ustawiony w pliku .env i czy jest poprawny."
             ),
         }
+    finally:
+        zakonczono.set()
+
+
+async def testowe_wywolanie(katalog_danych: Path) -> AsyncIterator[dict[str, Any]]:
+    """Jeden pełny przelot przez SDK: potwierdza, że CLI startuje, czyta klucz
+    API ze środowiska i zwraca odpowiedź. Używane przez ekran diagnostyki
+    (Faza 1) — jedyne miejsce w tej fazie, które faktycznie woła model.
+    """
+    opcje = zbuduj_opcje(katalog_danych, PROMPT_TESTOWY)
+    yield {"typ": "status", "tekst": "Uruchamiam CLI Claude Code…"}
+    async for zdarzenie in _przetworz_zapytanie(opcje, "Testowe wywołanie startowe."):
+        yield zdarzenie
+
+
+async def uruchom_redaktor(katalog_danych: Path, brief: str) -> AsyncIterator[dict[str, Any]]:
+    """Tryb Redaktor (SPEC 8.2): generuje 3 warianty LI + FB + brief graficzny
+    + braki na podstawie briefu operatora, zapisuje wynik do output/."""
+    opcje = zbuduj_opcje(
+        katalog_danych,
+        PROMPT_REDAKTOR,
+        agents={"researcher": SUBAGENT_RESEARCHER},
+    )
+    tresc_polecenia = (
+        f"Dzisiejsza data: {date.today().isoformat()}.\n\n"
+        f"Brief od operatora:\n{brief}"
+    )
+    yield {"typ": "status", "tekst": "Czytam zasady stylu i schematy postów…"}
+    async for zdarzenie in _przetworz_zapytanie(
+        opcje, tresc_polecenia, obserwuj_zapis_z_prefiksem="output/"
+    ):
+        yield zdarzenie
