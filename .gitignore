@@ -5,3 +5,18 @@ __pycache__/
 venv/
 *.egg-info/
 .DS_Store
+
+# Katalogi wyjściowe agenta — plany i wygenerowane posty powstają przy
+# każdym uruchomieniu i są własnością operatorki (wersjonuje je Dysk
+# Google), nie repozytorium. Same katalogi zostają, zawartość nie.
+dane/plan/*
+dane/output/*
+!dane/plan/.gitkeep
+!dane/output/.gitkeep
+
+# Korpus i materiały z firmy dostarcza administrator osobną paczką
+# (CLAUDE.md) — w repozytorium zostaje samo rusztowanie.
+dane/korpus/linkedin/*
+dane/input-firmowy/*
+!dane/korpus/linkedin/.gitkeep
+!dane/input-firmowy/.gitkeep
