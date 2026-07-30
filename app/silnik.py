@@ -28,8 +28,10 @@ from claude_agent_sdk import (
     TextBlock,
     ToolPermissionContext,
     ToolUseBlock,
+    create_sdk_mcp_server,
     query,
 )
+from claude_agent_sdk import tool as sdk_tool
 
 logger = logging.getLogger("forces_content_studio.silnik")
 
@@ -66,6 +68,7 @@ PARAMETRY_UZYWANE_PRZEZ_KOD = frozenset(
         "can_use_tool",
         "model",
         "agents",
+        "mcp_servers",
     }
 )
 
@@ -120,18 +123,21 @@ def zbuduj_opcje(
     *,
     model: str | None = None,
     agents: dict[str, Any] | None = None,
+    dodatkowe_dozwolone_narzedzia: list[str] | None = None,
+    mcp_servers: dict[str, Any] | None = None,
 ) -> ClaudeAgentOptions:
     """Buduje `ClaudeAgentOptions` wspólne dla wszystkich trybów agenta."""
     return ClaudeAgentOptions(
         cwd=katalog_danych,
         setting_sources=["project"],
         skills="all",
-        allowed_tools=DOZWOLONE_NARZEDZIA,
+        allowed_tools=DOZWOLONE_NARZEDZIA + (dodatkowe_dozwolone_narzedzia or []),
         disallowed_tools=ZABRONIONE_NARZEDZIA,
         system_prompt=system_prompt,
         can_use_tool=_zbuduj_zezwalacz(katalog_danych),
         model=model or os.environ.get("MODEL") or None,
         agents=agents,
+        mcp_servers=mcp_servers or {},
     )
 
 
@@ -233,6 +239,63 @@ PROMPT_REDAKTOR = (
     "się od '- ', albo dokładnie 'Brak braków.' jeśli niczego nie brakuje>\n"
 )
 
+# Nazwa narzędzia MCP tak, jak zobaczy ją model i jak trafia do allowed_tools/
+# ToolUseBlock.name — konwencja `mcp__<serwer>__<narzędzie>` (ta sama, którą
+# widać w nazwach narzędzi MCP używanych w tej rozmowie, np. `mcp__github__*`;
+# SPEC tego nie definiował, więc opieramy się na obserwowanej konwencji, nie
+# na zgadywaniu).
+NAZWA_NARZEDZIA_PROPOZYCJI = "mcp__asystent__zaproponuj_napisanie_posta"
+
+
+@sdk_tool(
+    "zaproponuj_napisanie_posta",
+    "Zgłasza operatorowi propozycję napisania posta LinkedIn do zatwierdzenia "
+    "(SPEC-frontend 5, karta 'Uruchom/Anuluj'). Użyj tego narzędzia zamiast "
+    "pisania treści posta samodzielnie w tej rozmowie.",
+    {"brief": str, "zasoby": str, "szacowane_tokeny": int},
+)
+async def _narzedzie_propozycji(_args: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "content": [
+            {
+                "type": "text",
+                "text": (
+                    "Propozycja przekazana operatorowi do zatwierdzenia. Nie "
+                    "generuj treści posta w tej rozmowie — zakończ krótkim "
+                    "potwierdzeniem, że czekasz na decyzję."
+                ),
+            }
+        ]
+    }
+
+
+SERWER_ASYSTENTA = create_sdk_mcp_server(name="asystent", tools=[_narzedzie_propozycji])
+
+PROMPT_ASYSTENT = (
+    "Jesteś asystentem Forces DC Content Studio — pomagasz operatorce "
+    "(Magdzie) korzystać z narzędzia. Pisz po polsku, bez żargonu "
+    "technicznego: nie mów 'prompt', 'agent', 'skill' — mów 'zasady stylu', "
+    "'asystent', 'plan miesiąca'.\n\n"
+    "Stan aplikacji poznajesz, czytając pliki w katalogu roboczym: korpus "
+    "(korpus/linkedin/*.md), plan miesiąca (plan/RRRR-MM.md — jeśli nie "
+    "istnieje, tryb budowania planu jeszcze nie jest dostępny w tej wersji "
+    "narzędzia, powiedz to wprost), materiały firmowe "
+    "(input-firmowy/RRRR-MM.md), zasady stylu (.claude/skills/), fakty o "
+    "firmie i zakazane zwroty (baza-wiedzy/). Odpowiadaj na podstawie tego, "
+    "co faktycznie jest w plikach — jeśli czegoś brakuje albo katalog jest "
+    "pusty, powiedz to wprost zamiast zgadywać.\n\n"
+    f"{GRANICA_NDA} {ZAKAZ_TRESCI_PRAWNYCH}\n\n"
+    "Jeśli operator prosi o napisanie albo wygenerowanie posta: NIE pisz "
+    "treści sam. Wywołaj narzędzie zaproponuj_napisanie_posta z argumentami "
+    "brief (samodzielny, konkretny opis tematu — tak, żeby redaktor mógł "
+    "napisać post bez dodatkowych pytań), zasoby (krótki opis czego "
+    "użyjesz, np. 'zasady stylu, korpus, wyszukiwanie w sieci') i "
+    "szacowane_tokeny (Twój przybliżony szacunek jako liczba całkowita — to "
+    "tylko orientacyjna wartość, ma prawo być niedokładna). Jeśli prośba "
+    "dotyczy budowania planu miesiąca, wyjaśnij, że ta funkcja pojawi się w "
+    "kolejnej fazie narzędzia, zamiast wywoływać to narzędzie."
+)
+
 
 async def _jako_strumien_wejscia(
     tekst: str, zakonczono: asyncio.Event
@@ -291,16 +354,22 @@ async def _przetworz_zapytanie(
     tresc_polecenia: str,
     *,
     obserwuj_zapis_z_prefiksem: str | None = None,
+    narzedzie_propozycji: str | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     """Wspólna pętla nad `query()`: zamienia wiadomości SDK na zdarzenia SSE.
 
-    Używana przez wszystkie tryby agenta (Faza 1: test; Faza 2: Redaktor;
-    kolejne fazy: Strateg, Wywiad) — jedno miejsce do poprawki, gdy zmieni
-    się kształt wiadomości SDK (CLAUDE.md: cała styczność z SDK w tym pliku).
+    Używana przez wszystkie tryby agenta (Faza 1: test; Faza 2: Redaktor,
+    Asystent; kolejne fazy: Strateg, Wywiad) — jedno miejsce do poprawki, gdy
+    zmieni się kształt wiadomości SDK (CLAUDE.md: cała styczność z SDK tutaj).
 
     Jeśli `obserwuj_zapis_z_prefiksem` jest podane (np. "output/"), ostatnia
     ścieżka z wywołania Write zaczynająca się od tego prefiksu trafia do
     zdarzenia "wynik" pod kluczem "sciezka_pliku".
+
+    Jeśli `narzedzie_propozycji` jest podane (patrz `NAZWA_NARZEDZIA_PROPOZYCJI`),
+    wywołanie tego narzędzia MCP trafia jako osobne zdarzenie "propozycja"
+    zamiast zwykłego statusu — frontend renderuje je jako kartę
+    Uruchom/Anuluj (SPEC-frontend 5), zamiast surowego kroku agenta.
     """
     sciezka_zapisu: str | None = None
     zakonczono = asyncio.Event()
@@ -314,6 +383,9 @@ async def _przetworz_zapytanie(
                     if isinstance(blok, TextBlock):
                         yield {"typ": "fragment", "tekst": blok.text}
                     elif isinstance(blok, ToolUseBlock):
+                        if narzedzie_propozycji and blok.name == narzedzie_propozycji:
+                            yield {"typ": "propozycja", "dane": blok.input}
+                            continue
                         yield {"typ": "status", "tekst": _opisz_uzycie_narzedzia(blok)}
                         sciezka = str(blok.input.get("file_path", ""))
                         if (
@@ -370,5 +442,23 @@ async def uruchom_redaktor(katalog_danych: Path, brief: str) -> AsyncIterator[di
     yield {"typ": "status", "tekst": "Czytam zasady stylu i schematy postów…"}
     async for zdarzenie in _przetworz_zapytanie(
         opcje, tresc_polecenia, obserwuj_zapis_z_prefiksem="output/"
+    ):
+        yield zdarzenie
+
+
+async def uruchom_asystenta(katalog_danych: Path, wiadomosc: str) -> AsyncIterator[dict[str, Any]]:
+    """Tryb Asystent (SPEC-frontend sekcja 5): czat świadomy stanu aplikacji
+    (czyta pliki, nie zgaduje). Nie pisze postów sam — kosztowną operację
+    (Redaktor) zgłasza jako zdarzenie "propozycja" do zatwierdzenia przez
+    operatora, zamiast generować treść od razu."""
+    opcje = zbuduj_opcje(
+        katalog_danych,
+        PROMPT_ASYSTENT,
+        agents={"researcher": SUBAGENT_RESEARCHER},
+        dodatkowe_dozwolone_narzedzia=[NAZWA_NARZEDZIA_PROPOZYCJI],
+        mcp_servers={"asystent": SERWER_ASYSTENTA},
+    )
+    async for zdarzenie in _przetworz_zapytanie(
+        opcje, wiadomosc, narzedzie_propozycji=NAZWA_NARZEDZIA_PROPOZYCJI
     ):
         yield zdarzenie

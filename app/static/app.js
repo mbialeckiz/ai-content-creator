@@ -155,7 +155,11 @@ function uruchomTestSilnika() {
 
 // --- Ekran "Posty" (tryb Redaktor, SPEC 8.2 / SPEC-frontend 7) ---
 
-let ostatniWynikRedaktora = null;
+// Wyniki trzymane po ID, nie jako pojedyncza zmienna "ostatni wynik" — na
+// ekranie Asystenta kilka wygenerowanych postów może współistnieć naraz
+// w historii czatu, każdy z własnymi przyciskami "Kopiuj".
+let licznikWynikowPostow = 0;
+const wynikiPostow = {};
 
 function renderujPosty() {
   OBSZAR.innerHTML = `
@@ -195,7 +199,8 @@ function elementBlokadyNda(fraza) {
 }
 
 function elementWynikuPosta(post, sciezkaPliku) {
-  ostatniWynikRedaktora = post;
+  const idWyniku = ++licznikWynikowPostow;
+  wynikiPostow[idWyniku] = post;
 
   const kartyWariantow = post.warianty
     .map(
@@ -223,23 +228,25 @@ function elementWynikuPosta(post, sciezkaPliku) {
       </p>`;
 
   return `
-    <h3>Warianty</h3>
-    ${kartyWariantow}
-    <details class="karta">
-      <summary><strong>Wersja na Facebooka</strong> <span class="szczegoly">(${post.facebook.length} znaków)</span></summary>
-      <pre class="monospace" style="white-space:pre-wrap">${escapeHtml(post.facebook)}</pre>
-      <button class="przycisk-drugorzedny" data-kopiuj-facebook>Kopiuj</button>
-    </details>
-    <div class="karta">
-      <strong>Brief graficzny</strong>
-      <pre class="monospace" style="white-space:pre-wrap;margin:0.5rem 0">${escapeHtml(post.brief_graficzny)}</pre>
-      <button class="przycisk-drugorzedny" data-kopiuj-brief>Kopiuj dla Sikory</button>
+    <div data-post-id="${idWyniku}">
+      <h3>Warianty</h3>
+      ${kartyWariantow}
+      <details class="karta">
+        <summary><strong>Wersja na Facebooka</strong> <span class="szczegoly">(${post.facebook.length} znaków)</span></summary>
+        <pre class="monospace" style="white-space:pre-wrap">${escapeHtml(post.facebook)}</pre>
+        <button class="przycisk-drugorzedny" data-kopiuj-facebook>Kopiuj</button>
+      </details>
+      <div class="karta">
+        <strong>Brief graficzny</strong>
+        <pre class="monospace" style="white-space:pre-wrap;margin:0.5rem 0">${escapeHtml(post.brief_graficzny)}</pre>
+        <button class="przycisk-drugorzedny" data-kopiuj-brief>Kopiuj dla Sikory</button>
+      </div>
+      <div class="karta" style="border-color:var(--ostrzezenie)">
+        <h3 style="margin-top:0;color:var(--ostrzezenie)">Braki</h3>
+        ${brakiHtml}
+      </div>
+      ${niekompletnyHtml}
     </div>
-    <div class="karta" style="border-color:var(--ostrzezenie)">
-      <h3 style="margin-top:0;color:var(--ostrzezenie)">Braki</h3>
-      ${brakiHtml}
-    </div>
-    ${niekompletnyHtml}
   `;
 }
 
@@ -256,23 +263,35 @@ async function kopiujDoSchowka(tekst, przycisk) {
   }, 1500);
 }
 
-function podepnijPrzyciskiKopiowania() {
-  document.querySelectorAll("[data-kopiuj-wariant]").forEach((przycisk) => {
+// `zakres`: element, w którym szukamy nowych przycisków — wywoływane też
+// wielokrotnie w historii czatu, więc `dataset.podpieto` chroni przed
+// podwójnym podpięciem tego samego przycisku (podwójne kopiowanie po kliku).
+function podepnijPrzyciskiKopiowania(zakres = document) {
+  const wynikDlaPrzycisku = (przycisk) => {
+    const kontener = przycisk.closest("[data-post-id]");
+    return wynikiPostow[kontener?.dataset.postId];
+  };
+
+  zakres.querySelectorAll("[data-kopiuj-wariant]").forEach((przycisk) => {
+    if (przycisk.dataset.podpieto) return;
+    przycisk.dataset.podpieto = "1";
     przycisk.addEventListener("click", () => {
       const indeks = Number(przycisk.dataset.kopiujWariant);
-      kopiujDoSchowka(ostatniWynikRedaktora.warianty[indeks].tresc, przycisk);
+      kopiujDoSchowka(wynikDlaPrzycisku(przycisk).warianty[indeks].tresc, przycisk);
     });
   });
-  const przyciskFb = document.querySelector("[data-kopiuj-facebook]");
-  if (przyciskFb) {
-    przyciskFb.addEventListener("click", () => kopiujDoSchowka(ostatniWynikRedaktora.facebook, przyciskFb));
-  }
-  const przyciskBrief = document.querySelector("[data-kopiuj-brief]");
-  if (przyciskBrief) {
-    przyciskBrief.addEventListener("click", () =>
-      kopiujDoSchowka(ostatniWynikRedaktora.brief_graficzny, przyciskBrief)
+  zakres.querySelectorAll("[data-kopiuj-facebook]").forEach((przycisk) => {
+    if (przycisk.dataset.podpieto) return;
+    przycisk.dataset.podpieto = "1";
+    przycisk.addEventListener("click", () => kopiujDoSchowka(wynikDlaPrzycisku(przycisk).facebook, przycisk));
+  });
+  zakres.querySelectorAll("[data-kopiuj-brief]").forEach((przycisk) => {
+    if (przycisk.dataset.podpieto) return;
+    przycisk.dataset.podpieto = "1";
+    przycisk.addEventListener("click", () =>
+      kopiujDoSchowka(wynikDlaPrzycisku(przycisk).brief_graficzny, przycisk)
     );
-  }
+  });
 }
 
 async function strumieniujSSE(odpowiedz, obslugaZdarzenia) {
@@ -375,6 +394,220 @@ async function uruchomRedaktora() {
   });
 }
 
+// --- Ekran "Asystent" (czat, SPEC-frontend 5) ---
+
+const propozycje = {};
+let licznikPropozycji = 0;
+
+function renderujAsystenta() {
+  OBSZAR.innerHTML = `
+    <h2>Asystent</h2>
+    <div class="karta" id="czat-historia" style="min-height:320px;max-height:60vh;overflow-y:auto"></div>
+    <form id="czat-formularz" style="display:flex;gap:0.5rem;margin-top:0.75rem">
+      <textarea
+        id="czat-pole"
+        class="monospace"
+        rows="2"
+        style="flex:1"
+        placeholder="Napisz do asystenta, np. „ile mam postów w korpusie" albo „napisz post o…"
+      ></textarea>
+      <button class="przycisk-glowny" type="submit">Wyślij</button>
+    </form>
+  `;
+  document.getElementById("czat-formularz").addEventListener("submit", (zdarzenie) => {
+    zdarzenie.preventDefault();
+    wyslijWiadomoscAsystenta();
+  });
+  document.getElementById("czat-pole").focus();
+}
+
+function dodajWiadomoscUzytkownikaDoCzatu(historia, tekst) {
+  const div = document.createElement("div");
+  div.className = "wiadomosc-czatu uzytkownik";
+  div.textContent = tekst;
+  historia.appendChild(div);
+  historia.scrollTop = historia.scrollHeight;
+}
+
+function utworzTureAsystentaWCzacie(historia) {
+  const kontener = document.createElement("div");
+  kontener.className = "wiadomosc-czatu asystent";
+
+  const kroki = document.createElement("details");
+  kroki.className = "kroki-agenta";
+  kroki.hidden = true;
+  const podsumowanie = document.createElement("summary");
+  podsumowanie.textContent = "Kroki agenta";
+  const listaKrokow = document.createElement("ul");
+  kroki.appendChild(podsumowanie);
+  kroki.appendChild(listaKrokow);
+
+  const tresc = document.createElement("div");
+  tresc.className = "czat-tresc";
+
+  kontener.appendChild(kroki);
+  kontener.appendChild(tresc);
+  historia.appendChild(kontener);
+  historia.scrollTop = historia.scrollHeight;
+
+  return { historia, kontener, kroki, listaKrokow, tresc, liczbaKrokow: 0 };
+}
+
+function elementPropozycji(dane, id) {
+  const tokeny = Number(dane.szacowane_tokeny);
+  const tokenyTekst = Number.isFinite(tokeny) ? `~${tokeny.toLocaleString("pl-PL")}` : "nieznane";
+  return `
+    <div class="karta karta-propozycja" data-propozycja-id="${id}" style="margin-top:0.5rem">
+      <p style="margin-top:0"><strong>Napiszę post:</strong> ${escapeHtml(dane.brief || "")}</p>
+      <p class="szczegoly">Użyję: ${escapeHtml(dane.zasoby || "zasad stylu, korpusu")}</p>
+      <p class="szczegoly">Szacowane zużycie: ${tokenyTekst} tokenów (orientacyjnie)</p>
+      <div style="margin-top:0.5rem;display:flex;gap:0.5rem">
+        <button class="przycisk-glowny" data-uruchom-propozycje="${id}">Uruchom</button>
+        <button class="przycisk-drugorzedny" data-anuluj-propozycje="${id}">Anuluj</button>
+      </div>
+    </div>
+  `;
+}
+
+function podepnijPrzyciskiPropozycji(zakres = document) {
+  zakres.querySelectorAll("[data-uruchom-propozycje]").forEach((przycisk) => {
+    if (przycisk.dataset.podpieto) return;
+    przycisk.dataset.podpieto = "1";
+    przycisk.addEventListener("click", () => uruchomPropozycje(przycisk));
+  });
+  zakres.querySelectorAll("[data-anuluj-propozycje]").forEach((przycisk) => {
+    if (przycisk.dataset.podpieto) return;
+    przycisk.dataset.podpieto = "1";
+    przycisk.addEventListener("click", () => {
+      przycisk.closest(".karta-propozycja").innerHTML = `<p class="szczegoly" style="margin:0">Anulowano.</p>`;
+    });
+  });
+}
+
+async function uruchomPropozycje(przycisk) {
+  const karta = przycisk.closest(".karta-propozycja");
+  const dane = propozycje[przycisk.dataset.uruchomPropozycje];
+  karta.innerHTML = `<p class="szczegoly" style="margin-top:0">Generuję…</p><div class="log-przebiegu" style="display:block"></div>`;
+  const log = karta.querySelector(".log-przebiegu");
+
+  const dopiszWpis = (tekst, klasa = "") => {
+    const wpis = document.createElement("div");
+    wpis.className = `wpis ${klasa}`;
+    wpis.textContent = tekst;
+    log.appendChild(wpis);
+    log.scrollTop = log.scrollHeight;
+  };
+
+  let odpowiedz;
+  try {
+    odpowiedz = await fetch("/api/redaktor", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ brief: dane.brief || "" }),
+    });
+  } catch (blad) {
+    dopiszWpis(`Nie udało się połączyć z serwerem (${blad.message}).`, "blad");
+    return;
+  }
+
+  const typTresci = odpowiedz.headers.get("content-type") || "";
+  if (typTresci.includes("application/json")) {
+    const wynik = await odpowiedz.json();
+    karta.innerHTML = wynik.zablokowane_nda
+      ? elementBlokadyNda(wynik.fraza)
+      : `<p class="instrukcja-naprawy" style="margin:0">${escapeHtml(wynik.blad || "Nie udało się uruchomić generowania.")}</p>`;
+    return;
+  }
+
+  await strumieniujSSE(odpowiedz, (zdarzenie) => {
+    if (zdarzenie.typ === "status" || zdarzenie.typ === "fragment") {
+      dopiszWpis(zdarzenie.tekst);
+    } else if (zdarzenie.typ === "wynik") {
+      if (zdarzenie.bledny) {
+        dopiszWpis("Generowanie zakończyło się błędem.", "blad");
+      } else if (zdarzenie.post) {
+        karta.outerHTML = elementWynikuPosta(zdarzenie.post, zdarzenie.sciezka_pliku);
+        podepnijPrzyciskiKopiowania();
+      } else {
+        dopiszWpis("Brak zapisanego pliku wynikowego — sprawdź log powyżej.", "blad");
+      }
+    } else if (zdarzenie.typ === "blad") {
+      dopiszWpis(zdarzenie.tekst, "blad");
+    }
+  });
+}
+
+function obslugaZdarzeniaCzatu(dane, tura) {
+  if (dane.typ === "status") {
+    tura.kroki.hidden = false;
+    tura.liczbaKrokow += 1;
+    tura.kroki.querySelector("summary").textContent = `Kroki agenta (${tura.liczbaKrokow})`;
+    const wpis = document.createElement("li");
+    wpis.textContent = dane.tekst;
+    tura.listaKrokow.appendChild(wpis);
+  } else if (dane.typ === "fragment") {
+    tura.tresc.textContent += dane.tekst;
+  } else if (dane.typ === "propozycja") {
+    licznikPropozycji += 1;
+    propozycje[licznikPropozycji] = dane.dane || {};
+    const nosnik = document.createElement("div");
+    nosnik.innerHTML = elementPropozycji(dane.dane || {}, licznikPropozycji);
+    tura.kontener.appendChild(nosnik.firstElementChild);
+    podepnijPrzyciskiPropozycji(tura.kontener);
+  } else if (dane.typ === "blad") {
+    const blad = document.createElement("p");
+    blad.className = "instrukcja-naprawy";
+    blad.textContent = dane.tekst;
+    tura.kontener.appendChild(blad);
+  } else if (dane.typ === "wynik" && dane.koszt_usd != null) {
+    const stopka = document.createElement("div");
+    stopka.className = "szczegoly";
+    stopka.style.marginTop = "0.35rem";
+    stopka.textContent = `Zużycie: $${dane.koszt_usd.toFixed(3)}`;
+    tura.kontener.appendChild(stopka);
+  }
+  tura.historia.scrollTop = tura.historia.scrollHeight;
+}
+
+async function wyslijWiadomoscAsystenta() {
+  const pole = document.getElementById("czat-pole");
+  const tresc = pole.value.trim();
+  if (!tresc) return;
+  pole.value = "";
+
+  const historia = document.getElementById("czat-historia");
+  dodajWiadomoscUzytkownikaDoCzatu(historia, tresc);
+  const tura = utworzTureAsystentaWCzacie(historia);
+
+  let odpowiedz;
+  try {
+    odpowiedz = await fetch("/api/asystent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ wiadomosc: tresc }),
+    });
+  } catch (blad) {
+    obslugaZdarzeniaCzatu({ typ: "blad", tekst: `Nie udało się połączyć z serwerem (${blad.message}).` }, tura);
+    return;
+  }
+
+  const typTresci = odpowiedz.headers.get("content-type") || "";
+  if (typTresci.includes("application/json")) {
+    const dane = await odpowiedz.json();
+    if (dane.zablokowane_nda) {
+      const nosnik = document.createElement("div");
+      nosnik.innerHTML = elementBlokadyNda(dane.fraza);
+      tura.kontener.appendChild(nosnik.firstElementChild);
+      tura.historia.scrollTop = tura.historia.scrollHeight;
+    } else {
+      obslugaZdarzeniaCzatu({ typ: "blad", tekst: dane.blad || "Nie udało się wysłać wiadomości." }, tura);
+    }
+    return;
+  }
+
+  await strumieniujSSE(odpowiedz, (dane) => obslugaZdarzeniaCzatu(dane, tura));
+}
+
 function przejdzDoZakladki(nazwa) {
   ustawAktywnaZakladke(nazwa);
   window.location.hash = nazwa;
@@ -382,6 +615,8 @@ function przejdzDoZakladki(nazwa) {
     renderujDiagnostyke();
   } else if (nazwa === "posty") {
     renderujPosty();
+  } else if (nazwa === "asystent") {
+    renderujAsystenta();
   } else {
     renderujPlaceholder(nazwa);
   }

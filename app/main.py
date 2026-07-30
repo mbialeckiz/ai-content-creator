@@ -91,6 +91,17 @@ async def api_silnik_test() -> StreamingResponse:
     return StreamingResponse(_strumien_testu_silnika(), media_type="text/event-stream")
 
 
+def _blokada_nda_lub_none(tekst: str) -> JSONResponse | None:
+    """Blokada NDA (SPEC 10.2–10.3), sprawdzana synchronicznie przed
+    jakimkolwiek wywołaniem SDK — nie tylko instrukcją w prompcie modelu
+    (SPEC 10.1, kryterium akceptacji frontendu)."""
+    fraza_nda = pliki.wykryj_fraze_nda(tekst, katalog_danych())
+    if not fraza_nda:
+        return None
+    logger.warning("Zablokowano polecenie zawierające frazę objętą NDA.")
+    return JSONResponse({"zablokowane_nda": True, "fraza": fraza_nda})
+
+
 class PolecenieRedaktora(BaseModel):
     brief: str
 
@@ -109,16 +120,38 @@ async def _strumien_redaktora(brief: str) -> AsyncIterator[str]:
 
 @app.post("/api/redaktor", response_model=None)
 async def api_redaktor(polecenie: PolecenieRedaktora) -> JSONResponse | StreamingResponse:
-    """Tryb Redaktor (SPEC 8.2). Blokada NDA (SPEC 10.2–10.3) działa tutaj,
-    synchronicznie, przed jakimkolwiek wywołaniem SDK — nie tylko instrukcją
-    w prompcie modelu (SPEC 10.1, kryterium akceptacji frontendu)."""
+    """Tryb Redaktor (SPEC 8.2): brief albo pozycja z planu -> 3 warianty."""
     brief = polecenie.brief.strip()
     if not brief:
         return JSONResponse({"blad": "Brief nie może być pusty — opisz, o czym ma być post."}, status_code=400)
 
-    fraza_nda = pliki.wykryj_fraze_nda(brief, katalog_danych())
-    if fraza_nda:
-        logger.warning("Zablokowano polecenie zawierające frazę objętą NDA.")
-        return JSONResponse({"zablokowane_nda": True, "fraza": fraza_nda})
+    blokada = _blokada_nda_lub_none(brief)
+    if blokada:
+        return blokada
 
     return StreamingResponse(_strumien_redaktora(brief), media_type="text/event-stream")
+
+
+class WiadomoscAsystenta(BaseModel):
+    wiadomosc: str
+
+
+async def _strumien_asystenta(wiadomosc: str) -> AsyncIterator[str]:
+    async for zdarzenie in silnik.uruchom_asystenta(katalog_danych(), wiadomosc):
+        yield _jako_sse(zdarzenie)
+
+
+@app.post("/api/asystent", response_model=None)
+async def api_asystent(polecenie: WiadomoscAsystenta) -> JSONResponse | StreamingResponse:
+    """Tryb Asystent (SPEC-frontend 5) — główny czat. Kosztowne operacje nie
+    uruchamiają się same: model zgłasza zdarzenie "propozycja", a operator
+    zatwierdza ją osobnym wywołaniem /api/redaktor (patrz app.js)."""
+    wiadomosc = polecenie.wiadomosc.strip()
+    if not wiadomosc:
+        return JSONResponse({"blad": "Napisz coś, zanim wyślesz wiadomość."}, status_code=400)
+
+    blokada = _blokada_nda_lub_none(wiadomosc)
+    if blokada:
+        return blokada
+
+    return StreamingResponse(_strumien_asystenta(wiadomosc), media_type="text/event-stream")

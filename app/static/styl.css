@@ -267,3 +267,37 @@ a:focus-visible,
 .log-przebiegu .wpis.blad {
   color: #ff8a80;
 }
+
+.wiadomosc-czatu {
+  margin-bottom: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--linia);
+}
+
+.wiadomosc-czatu:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+}
+
+.wiadomosc-czatu.uzytkownik {
+  font-weight: 600;
+}
+
+.wiadomosc-czatu .czat-tresc {
+  white-space: pre-wrap;
+  margin-top: 0.35rem;
+}
+
+.kroki-agenta {
+  font-size: 0.85rem;
+  color: var(--tekst-przygaszony);
+}
+
+.kroki-agenta summary {
+  cursor: pointer;
+}
+
+.kroki-agenta ul {
+  margin: 0.35rem 0 0 0;
+  padding-left: 1.25rem;
+}
