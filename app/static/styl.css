@@ -503,3 +503,8 @@ input[type="month"] {
   color: var(--tekst);
   background: var(--tlo-panelu);
 }
+
+.zuzycie-wysokie {
+  color: var(--ostrzezenie);
+  font-weight: 600;
+}

@@ -53,6 +53,15 @@ KATALOGI_ZAPISU = ("plan", "output")
 DOZWOLONE_NARZEDZIA = ["Read", "Grep", "Glob", "Agent", "WebSearch", "WebFetch"]
 ZABRONIONE_NARZEDZIA = ["Bash", "Edit"]
 
+# Zawężone zestawy narzędzi dla poszczególnych trybów. Każde narzędzie to
+# koszt: jego definicja siedzi w kontekście każdej tury. Ważniejsze jednak,
+# że `WebSearch`/`WebFetch` w rękach głównego agenta wciągają całe strony do
+# jego kontekstu — a ten jest przeładowywany przy każdej turze. Research
+# oddajemy więc podagentowi, który ma własny, czysty kontekst i zwraca samo
+# streszczenie.
+NARZEDZIA_BEZ_SIECI = ["Read", "Grep", "Glob"]
+NARZEDZIA_Z_PODAGENTEM = ["Read", "Grep", "Glob", "Agent"]
+
 # Nazwy pól `ClaudeAgentOptions`, których faktycznie używa ten moduł.
 # `app/diagnostyka.py` porównuje ten zbiór z introspekcją zainstalowanej
 # wersji SDK — jeśli nazwa zniknie albo zmieni się, diagnostyka to zgłosi
@@ -69,6 +78,8 @@ PARAMETRY_UZYWANE_PRZEZ_KOD = frozenset(
         "model",
         "agents",
         "mcp_servers",
+        "max_budget_usd",
+        "max_turns",
     }
 )
 
@@ -117,6 +128,36 @@ def _zbuduj_zezwalacz(katalog_danych: Path):
     return _zezwol_na_narzedzie
 
 
+# Sufit kosztów pojedynczej operacji (SPEC-frontend 2.2: „nie da się
+# przekroczyć limitu"). Każde wywołanie modelu niesie ok. 25 tys. tokenów
+# narzutu (definicje narzędzi i prompt systemowy CLI) — przy kilkunastu
+# turach agenta i podagencie badawczym rachunek potrafi urosnąć do kilku
+# dolarów za jeden post, jeśli nic go nie zatrzyma. Limit jest twardy:
+# SDK przerywa pracę po jego przekroczeniu.
+LIMIT_USD_DOMYSLNY = 0.60
+LIMIT_USD_PLAN = 1.50  # plan miesiąca czyta więcej i robi research, ma wyższy sufit
+
+# Ile tur agenta wolno wykonać. Bez tego zapętlony agent (np. gdy zapis
+# pliku raz za razem się nie udaje) potrafi spalić limit w całości.
+MAKS_TUR_DOMYSLNIE = 30
+
+
+def limit_kosztu(domyslny: float) -> float:
+    """Sufit kosztów operacji; nadpisywalny przez `.env` bez zmian w kodzie."""
+    z_env = os.environ.get("LIMIT_USD_NA_OPERACJE", "").strip()
+    if not z_env:
+        return domyslny
+    try:
+        return float(z_env.replace(",", "."))
+    except ValueError:
+        logger.warning(
+            "LIMIT_USD_NA_OPERACJE w .env nie jest liczbą (%r) — używam %.2f USD.",
+            z_env,
+            domyslny,
+        )
+        return domyslny
+
+
 def zbuduj_opcje(
     katalog_danych: Path,
     system_prompt: str,
@@ -124,20 +165,28 @@ def zbuduj_opcje(
     model: str | None = None,
     agents: dict[str, Any] | None = None,
     dodatkowe_dozwolone_narzedzia: list[str] | None = None,
+    narzedzia: list[str] | None = None,
     mcp_servers: dict[str, Any] | None = None,
+    limit_usd: float | None = None,
+    maks_tur: int | None = None,
 ) -> ClaudeAgentOptions:
     """Buduje `ClaudeAgentOptions` wspólne dla wszystkich trybów agenta."""
+    lista_narzedzi = (narzedzia if narzedzia is not None else DOZWOLONE_NARZEDZIA) + (
+        dodatkowe_dozwolone_narzedzia or []
+    )
     return ClaudeAgentOptions(
         cwd=katalog_danych,
         setting_sources=["project"],
         skills="all",
-        allowed_tools=DOZWOLONE_NARZEDZIA + (dodatkowe_dozwolone_narzedzia or []),
+        allowed_tools=lista_narzedzi,
         disallowed_tools=ZABRONIONE_NARZEDZIA,
         system_prompt=system_prompt,
         can_use_tool=_zbuduj_zezwalacz(katalog_danych),
         model=model or os.environ.get("MODEL") or None,
         agents=agents,
         mcp_servers=mcp_servers or {},
+        max_budget_usd=limit_kosztu(limit_usd if limit_usd is not None else LIMIT_USD_DOMYSLNY),
+        max_turns=maks_tur or MAKS_TUR_DOMYSLNIE,
     )
 
 
@@ -440,6 +489,21 @@ async def _przetworz_zapytanie(
                         ):
                             sciezka_zapisu = sciezka
             elif isinstance(wiadomosc, ResultMessage):
+                if "budget" in (wiadomosc.subtype or ""):
+                    logger.warning(
+                        "Operacja przerwana po przekroczeniu limitu kosztów (%s USD).",
+                        wiadomosc.total_cost_usd,
+                    )
+                    yield {
+                        "typ": "blad",
+                        "tekst": (
+                            "Przerwano — operacja przekroczyła ustawiony limit kosztu "
+                            f"(wydano {wiadomosc.total_cost_usd or 0:.2f} USD). "
+                            "To zabezpieczenie przed niespodziewanym rachunkiem. "
+                            "Spróbuj z węższym tematem, albo poproś administratora "
+                            "o podniesienie limitu w ustawieniach."
+                        ),
+                    }
                 yield {
                     "typ": "wynik",
                     "bledny": wiadomosc.is_error,
@@ -487,6 +551,7 @@ async def uruchom_redaktor(katalog_danych: Path, brief: str) -> AsyncIterator[di
         katalog_danych,
         PROMPT_REDAKTOR,
         agents={"researcher": SUBAGENT_RESEARCHER},
+        narzedzia=NARZEDZIA_Z_PODAGENTEM,
     )
     tresc_polecenia = (
         f"Dzisiejsza data: {date.today().isoformat()}.\n\n"
@@ -504,12 +569,16 @@ async def uruchom_asystenta(katalog_danych: Path, wiadomosc: str) -> AsyncIterat
     (czyta pliki, nie zgaduje). Nie pisze postów sam — kosztowną operację
     (Redaktor) zgłasza jako zdarzenie "propozycja" do zatwierdzenia przez
     operatora, zamiast generować treść od razu."""
+    # Asystent nie pisze postów ani nie robi researchu — odpowiada na pytania
+    # o stan aplikacji i zgłasza propozycje. Bez sieci i bez podagenta jego
+    # kontekst (a więc i koszt każdej odpowiedzi) jest wyraźnie mniejszy.
     opcje = zbuduj_opcje(
         katalog_danych,
         PROMPT_ASYSTENT,
-        agents={"researcher": SUBAGENT_RESEARCHER},
+        narzedzia=NARZEDZIA_BEZ_SIECI,
         dodatkowe_dozwolone_narzedzia=[NAZWA_NARZEDZIA_PROPOZYCJI],
         mcp_servers={"asystent": SERWER_ASYSTENTA},
+        limit_usd=0.25,
     )
     async for zdarzenie in _przetworz_zapytanie(
         opcje, wiadomosc, narzedzie_propozycji=NAZWA_NARZEDZIA_PROPOZYCJI
@@ -526,6 +595,8 @@ async def uruchom_stratega(
         katalog_danych,
         PROMPT_STRATEG,
         agents={"researcher": SUBAGENT_RESEARCHER},
+        narzedzia=NARZEDZIA_Z_PODAGENTEM,
+        limit_usd=LIMIT_USD_PLAN,
     )
     tresc_polecenia = (
         f"Dzisiejsza data: {date.today().isoformat()}.\n"

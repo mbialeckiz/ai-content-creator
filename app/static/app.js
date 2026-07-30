@@ -20,6 +20,21 @@ function escapeHtml(tekst) {
   return nosnik.innerHTML;
 }
 
+// Licznik zużycia w nagłówku (SPEC-frontend 4). Liczy koszt operacji
+// wykonanych od uruchomienia aplikacji — bez tego operatorka dowiaduje się
+// o wydatku dopiero z rachunku.
+let kosztSesji = 0;
+
+function dopiszKoszt(kosztUsd) {
+  if (!kosztUsd) return;
+  kosztSesji += kosztUsd;
+  const element = document.querySelector(".zuzycie");
+  if (element) {
+    element.textContent = `Wydano w tej sesji: ${kosztSesji.toFixed(2)} USD`;
+    element.classList.toggle("zuzycie-wysokie", kosztSesji >= 2);
+  }
+}
+
 function ustawAktywnaZakladke(nazwa) {
   document.querySelectorAll("button.zakladka, [data-zakladka]").forEach((el) => {
     el.classList.toggle("aktywna", el.dataset.zakladka === nazwa);
@@ -137,6 +152,7 @@ function uruchomTestSilnika() {
     } else if (dane.typ === "fragment") {
       dopiszWpis(dane.tekst);
     } else if (dane.typ === "wynik") {
+      dopiszKoszt(dane.koszt_usd);
       dopiszWpis(
         `Zakończono. Tury: ${dane.tury}, koszt: ${dane.koszt_usd ?? "brak danych"} USD.`
       );
@@ -387,6 +403,7 @@ async function uruchomRedaktora() {
     if (dane.typ === "status" || dane.typ === "fragment") {
       dopiszWpis(dane.tekst);
     } else if (dane.typ === "wynik") {
+      dopiszKoszt(dane.koszt_usd);
       if (dane.bledny) {
         dopiszWpis("Generowanie zakończyło się błędem.", "blad");
       } else if (dane.post) {
@@ -532,6 +549,7 @@ async function uruchomPropozycje(przycisk) {
     if (zdarzenie.typ === "status" || zdarzenie.typ === "fragment") {
       dopiszWpis(zdarzenie.tekst);
     } else if (zdarzenie.typ === "wynik") {
+      dopiszKoszt(zdarzenie.koszt_usd);
       if (zdarzenie.bledny) {
         dopiszWpis("Generowanie zakończyło się błędem.", "blad");
       } else if (zdarzenie.post) {
@@ -569,6 +587,7 @@ function obslugaZdarzeniaCzatu(dane, tura) {
     blad.textContent = dane.tekst;
     tura.kontener.appendChild(blad);
   } else if (dane.typ === "wynik" && dane.koszt_usd != null) {
+    dopiszKoszt(dane.koszt_usd);
     const stopka = document.createElement("div");
     stopka.className = "szczegoly";
     stopka.style.marginTop = "0.35rem";
@@ -1269,6 +1288,7 @@ async function zbudujPlan() {
     if (zdarzenie.typ === "status" || zdarzenie.typ === "fragment") {
       dopiszWpis(zdarzenie.tekst);
     } else if (zdarzenie.typ === "wynik") {
+      dopiszKoszt(zdarzenie.koszt_usd);
       if (zdarzenie.bledny) {
         dopiszWpis("Budowanie planu zakończyło się błędem.", "blad");
         przycisk.disabled = false;
