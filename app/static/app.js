@@ -301,18 +301,22 @@ async function uruchomRedaktora() {
   const log = document.getElementById("log-redaktora");
   const wynik = document.getElementById("wynik-redaktora");
   wynik.innerHTML = "";
+  log.hidden = true;
+  log.innerHTML = "";
 
   if (!brief) {
     wynik.innerHTML = `<div class="karta"><p class="instrukcja-naprawy">Opisz, o czym ma być post, zanim klikniesz „Generuj".</p></div>`;
     return;
   }
 
-  log.hidden = false;
-  log.innerHTML = "";
   przycisk.disabled = true;
   przycisk.textContent = "Generuję…";
 
+  // Log pojawia się dopiero, gdy faktycznie zaczynamy strumieniować odpowiedź —
+  // blokada NDA i błędy walidacji kończą się przed wywołaniem SDK i nie
+  // powinny zostawiać pustego paska logu nad kartą komunikatu.
   const dopiszWpis = (tekst, klasa = "") => {
+    log.hidden = false;
     const wpis = document.createElement("div");
     wpis.className = `wpis ${klasa}`;
     wpis.textContent = tekst;
@@ -332,7 +336,7 @@ async function uruchomRedaktora() {
       body: JSON.stringify({ brief }),
     });
   } catch (blad) {
-    dopiszWpis(`Nie udało się połączyć z serwerem (${blad.message}).`, "blad");
+    wynik.innerHTML = `<div class="karta"><p class="instrukcja-naprawy">Nie udało się połączyć z serwerem (${escapeHtml(blad.message)}).</p></div>`;
     zakoncz();
     return;
   }
@@ -344,12 +348,13 @@ async function uruchomRedaktora() {
     if (dane.zablokowane_nda) {
       wynik.innerHTML = elementBlokadyNda(dane.fraza);
     } else {
-      dopiszWpis(dane.blad || "Nie udało się uruchomić generowania.", "blad");
+      wynik.innerHTML = `<div class="karta"><p class="instrukcja-naprawy">${escapeHtml(dane.blad || "Nie udało się uruchomić generowania.")}</p></div>`;
     }
     zakoncz();
     return;
   }
 
+  log.hidden = false;
   await strumieniujSSE(odpowiedz, (dane) => {
     if (dane.typ === "status" || dane.typ === "fragment") {
       dopiszWpis(dane.tekst);
