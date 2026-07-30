@@ -6,12 +6,15 @@ import dataclasses
 import json
 import logging
 import os
+import shutil
+import tempfile
+import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, File, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -21,7 +24,7 @@ from pydantic import BaseModel
 # (SPEC sekcja 5), więc zmienna musi tam być, zanim padnie pierwsze zapytanie.
 load_dotenv()
 
-from app import diagnostyka, pliki, silnik  # noqa: E402 — patrz komentarz wyżej
+from app import diagnostyka, korpus, pliki, silnik  # noqa: E402 — patrz komentarz wyżej
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("forces_content_studio")
@@ -155,3 +158,207 @@ async def api_asystent(polecenie: WiadomoscAsystenta) -> JSONResponse | Streamin
         return blokada
 
     return StreamingResponse(_strumien_asystenta(wiadomosc), media_type="text/event-stream")
+
+
+# --- Ekran „Styl": pliki sterujące zachowaniem asystenta (SPEC 8.4) ---
+
+
+@app.get("/api/pliki")
+async def api_pliki() -> JSONResponse:
+    return JSONResponse({"pliki": pliki.lista_plikow_jakosci(katalog_danych())})
+
+
+@app.get("/api/pliki/{identyfikator}", response_model=None)
+async def api_plik(identyfikator: str) -> JSONResponse:
+    try:
+        tresc = pliki.czytaj_plik_jakosci(katalog_danych(), identyfikator)
+    except KeyError:
+        return JSONResponse({"blad": "Nie znamy takiego pliku ustawień."}, status_code=404)
+    except OSError as blad:
+        logger.error("Nie udało się odczytać pliku %s: %s", identyfikator, blad)
+        return JSONResponse(
+            {"blad": "Nie udało się odczytać pliku — sprawdź, czy folder danych jest dostępny."},
+            status_code=500,
+        )
+    return JSONResponse({"tresc": tresc, "luki": pliki.policz_luki(tresc)})
+
+
+class TrescPliku(BaseModel):
+    tresc: str
+
+
+@app.put("/api/pliki/{identyfikator}", response_model=None)
+async def api_zapisz_plik(identyfikator: str, dane: TrescPliku) -> JSONResponse:
+    try:
+        pliki.zapisz_plik_jakosci(katalog_danych(), identyfikator, dane.tresc)
+    except KeyError:
+        return JSONResponse({"blad": "Nie znamy takiego pliku ustawień."}, status_code=404)
+    except OSError as blad:
+        logger.error("Nie udało się zapisać pliku %s: %s", identyfikator, blad)
+        return JSONResponse(
+            {"blad": "Nie udało się zapisać pliku — sprawdź, czy folder danych jest dostępny."},
+            status_code=500,
+        )
+    return JSONResponse({"zapisano": True, "luki": pliki.policz_luki(dane.tresc)})
+
+
+# --- Ekran „Korpus" (SPEC 8.5, SPEC-frontend 10) ---
+
+
+@app.get("/api/korpus")
+async def api_korpus() -> JSONResponse:
+    posty, ostrzezenia = korpus.wczytaj_korpus(katalog_danych())
+    return JSONResponse(
+        {
+            "posty": [dataclasses.asdict(post) | {"wymaga_oznaczenia": post.wymaga_oznaczenia} for post in posty],
+            "ostrzezenia": ostrzezenia,
+            "docelowo": korpus.DOCELOWA_LICZBA_POSTOW,
+            "dozwolone_typy": list(korpus.DOZWOLONE_TYPY),
+        }
+    )
+
+
+class NowyPost(BaseModel):
+    data: str
+    typ: str
+    jezyk: str = "pl"
+    reakcje: int = 0
+    komentarze: int = 0
+    url: str = ""
+    tresc: str
+
+
+@app.post("/api/korpus", response_model=None)
+async def api_dodaj_post(post: NowyPost) -> JSONResponse:
+    try:
+        nazwa = korpus.zapisz_post(
+            katalog_danych(),
+            data=post.data,
+            typ=post.typ,
+            jezyk=post.jezyk,
+            reakcje=post.reakcje,
+            komentarze=post.komentarze,
+            url=post.url,
+            tresc=post.tresc,
+        )
+    except korpus.BladWalidacji as blad:
+        return JSONResponse({"blad": str(blad)}, status_code=400)
+    except OSError as blad:
+        logger.error("Nie udało się zapisać posta korpusu: %s", blad)
+        return JSONResponse(
+            {"blad": "Nie udało się zapisać posta — sprawdź, czy folder danych jest dostępny."},
+            status_code=500,
+        )
+    return JSONResponse({"zapisano": True, "plik": nazwa})
+
+
+class OznaczenieTypu(BaseModel):
+    typ: str
+
+
+@app.patch("/api/korpus/{nazwa_pliku}", response_model=None)
+async def api_oznacz_typ(nazwa_pliku: str, dane: OznaczenieTypu) -> JSONResponse:
+    try:
+        korpus.oznacz_typ(katalog_danych(), nazwa_pliku, dane.typ)
+    except korpus.BladWalidacji as blad:
+        return JSONResponse({"blad": str(blad)}, status_code=400)
+    except OSError as blad:
+        logger.error("Nie udało się zmienić typu posta %s: %s", nazwa_pliku, blad)
+        return JSONResponse(
+            {"blad": "Nie udało się zapisać zmiany — sprawdź, czy folder danych jest dostępny."},
+            status_code=500,
+        )
+    return JSONResponse({"zapisano": True})
+
+
+@app.delete("/api/korpus/{nazwa_pliku}", response_model=None)
+async def api_usun_post(nazwa_pliku: str) -> JSONResponse:
+    try:
+        korpus.usun_post(katalog_danych(), nazwa_pliku)
+    except korpus.BladWalidacji as blad:
+        return JSONResponse({"blad": str(blad)}, status_code=404)
+    except OSError as blad:
+        logger.error("Nie udało się usunąć posta %s: %s", nazwa_pliku, blad)
+        return JSONResponse(
+            {"blad": "Nie udało się usunąć posta — sprawdź, czy folder danych jest dostępny."},
+            status_code=500,
+        )
+    return JSONResponse({"usunieto": True})
+
+
+# Wgrane pliki czekające na potwierdzenie importu. Trzymane w katalogu
+# tymczasowym systemu, nie w katalogu danych: to stan przejściowy jednego
+# kliknięcia, a nie dane aplikacji (te są w plikach .md — CLAUDE.md #2).
+KATALOG_WGRANYCH = Path(tempfile.gettempdir()) / "forces-content-studio-import"
+
+
+@app.post("/api/korpus/import/analiza", response_model=None)
+async def api_import_analiza(plik: UploadFile = File(...)) -> JSONResponse:
+    """Krok 1 importu: analiza wgranego pliku. Nic jeszcze nie zapisuje do
+    korpusu — operatorka najpierw widzi, co zostanie zaimportowane (SPEC 8.5)."""
+    KATALOG_WGRANYCH.mkdir(parents=True, exist_ok=True)
+    rozszerzenie = Path(plik.filename or "").suffix.lower()
+    identyfikator = uuid.uuid4().hex
+    sciezka = KATALOG_WGRANYCH / f"{identyfikator}{rozszerzenie}"
+
+    try:
+        with sciezka.open("wb") as docelowy:
+            shutil.copyfileobj(plik.file, docelowy)
+        diagnostyka_importu, _ = korpus.przeanalizuj_plik_importu(sciezka)
+    except korpus.BladWalidacji as blad:
+        sciezka.unlink(missing_ok=True)
+        return JSONResponse({"blad": str(blad)}, status_code=400)
+    except Exception as blad:  # noqa: BLE001 — pandas rzuca różnymi typami
+        logger.error("Nie udało się przeanalizować wgranego pliku: %s", blad)
+        sciezka.unlink(missing_ok=True)
+        return JSONResponse(
+            {
+                "blad": (
+                    "Nie udało się odczytać tego pliku. Sprawdź, czy to poprawny "
+                    "plik CSV, XLSX albo JSON z eksportu LinkedIn."
+                )
+            },
+            status_code=400,
+        )
+
+    return JSONResponse(
+        {"identyfikator": sciezka.name, "diagnostyka": dataclasses.asdict(diagnostyka_importu)}
+    )
+
+
+class PotwierdzenieImportu(BaseModel):
+    identyfikator: str
+    limit: int | None = None
+
+
+@app.post("/api/korpus/import/wykonaj", response_model=None)
+async def api_import_wykonaj(dane: PotwierdzenieImportu) -> JSONResponse:
+    """Krok 2 importu: zapis do korpusu po potwierdzeniu przez operatorkę."""
+    sciezka = KATALOG_WGRANYCH / Path(dane.identyfikator).name
+    if not sciezka.is_file():
+        return JSONResponse(
+            {"blad": "Wgrany plik wygasł — wgraj go jeszcze raz i potwierdź import."},
+            status_code=404,
+        )
+
+    try:
+        diagnostyka_importu, wiersze = korpus.przeanalizuj_plik_importu(sciezka)
+        wynik = korpus.zaimportuj(katalog_danych(), wiersze, dane.limit)
+    except korpus.BladWalidacji as blad:
+        return JSONResponse({"blad": str(blad)}, status_code=400)
+    except OSError as blad:
+        logger.error("Nie udało się zaimportować korpusu: %s", blad)
+        return JSONResponse(
+            {"blad": "Nie udało się zapisać postów — sprawdź, czy folder danych jest dostępny."},
+            status_code=500,
+        )
+    finally:
+        sciezka.unlink(missing_ok=True)
+
+    return JSONResponse(
+        {
+            "zaimportowane": wynik["zaimportowane"],
+            "odrzucone_reposty": diagnostyka_importu.odrzucone_reposty,
+            "odrzucone_krotkie": diagnostyka_importu.odrzucone_krotkie,
+        }
+    )

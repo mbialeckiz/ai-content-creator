@@ -301,3 +301,123 @@ a:focus-visible,
   margin: 0.35rem 0 0 0;
   padding-left: 1.25rem;
 }
+
+/* --- Ekran Styl --- */
+
+.zakladki-plikow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0.75rem 0;
+}
+
+.zakladka-pliku {
+  background: var(--tlo-panelu);
+  border: 1px solid var(--linia);
+  border-radius: 6px;
+  padding: 0.4rem 0.8rem;
+  color: var(--tekst);
+  font-size: 0.9rem;
+}
+
+.zakladka-pliku.aktywna {
+  border-color: var(--akcent);
+  color: var(--akcent);
+  font-weight: 600;
+}
+
+.znacznik-luk {
+  display: inline-block;
+  background: var(--ostrzezenie-tlo);
+  color: var(--ostrzezenie);
+  border-radius: 10px;
+  padding: 0 0.4rem;
+  font-size: 0.8rem;
+  margin-left: 0.3rem;
+}
+
+.roznica {
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+  max-height: 240px;
+  overflow-y: auto;
+  border: 1px solid var(--linia);
+  border-radius: 6px;
+  padding: 0.5rem;
+}
+
+.linia-usunieta {
+  background: var(--blad-tlo);
+  color: var(--blad);
+  white-space: pre-wrap;
+}
+
+.linia-dodana {
+  background: var(--ok-tlo);
+  color: var(--ok);
+  white-space: pre-wrap;
+}
+
+/* --- Ekran Korpus --- */
+
+.pasek-postepu {
+  background: var(--tlo);
+  border-radius: 4px;
+  height: 10px;
+  margin: 0.5rem 0;
+  overflow: hidden;
+}
+
+.pasek-wypelnienie {
+  background: var(--akcent);
+  height: 100%;
+}
+
+.tabela-korpusu {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 0.75rem;
+  font-size: 0.9rem;
+}
+
+.tabela-korpusu th,
+.tabela-korpusu td {
+  border-bottom: 1px solid var(--linia);
+  padding: 0.4rem 0.5rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.tabela-korpusu tr.wymaga-oznaczenia {
+  background: var(--ostrzezenie-tlo);
+}
+
+.tabela-korpusu summary {
+  cursor: pointer;
+}
+
+.pola-formularza {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.pola-formularza label {
+  display: flex;
+  flex-direction: column;
+  font-size: 0.85rem;
+  color: var(--tekst-przygaszony);
+  gap: 0.2rem;
+}
+
+.pola-formularza input,
+.pola-formularza select {
+  font-family: inherit;
+  font-size: 0.9rem;
+  padding: 0.35rem;
+  border: 1px solid var(--linia);
+  border-radius: 4px;
+  color: var(--tekst);
+  background: var(--tlo-panelu);
+}

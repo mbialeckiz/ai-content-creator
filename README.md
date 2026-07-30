@@ -6,11 +6,19 @@ grupa Maya Holding). Pełny kontekst biznesowy i wymagania: zobacz
 (warstwa interfejsu — zastępuje sekcję 9 dokumentu głównego). Konwencje
 projektu: `CLAUDE.md`.
 
-**Status: Faza 1 (szkielet i diagnostyka)** z kolejności implementacji
-w SPEC sekcja 12. Zbudowano: szkielet FastAPI, `start.command`, ekran
-„Sprawdź środowisko", opakowanie SDK (`app/silnik.py`) z jednym trybem
-testowym. Tryby Strateg / Redaktor / Wywiad oraz ekrany Plan / Posty /
-Materiały / Styl / Korpus przychodzą w kolejnych fazach.
+**Status: fazy 1–3 gotowe** z kolejności implementacji w SPEC sekcja 12.
+
+| Faza | Zakres | Stan |
+|---|---|---|
+| 1 | szkielet FastAPI, `start.command`, ekran „Sprawdź środowisko", opakowanie SDK | gotowe |
+| 2 | Asystent (czat) + Posty (tryb Redaktor) | gotowe |
+| 3 | Korpus + Styl | gotowe |
+| 4 | Plan + Materiały (tryb Strateg) | do zrobienia |
+| 5 | Wywiad o stylu w czacie | do zrobienia |
+
+Od fazy 3 narzędzie jest samowystarczalne dla operatorki: dopisywanie
+i import korpusu oraz zmiana zasad stylu nie wymagają administratora.
+Zakładki „Plan" i „Materiały" są jeszcze puste.
 
 ## Uruchomienie
 

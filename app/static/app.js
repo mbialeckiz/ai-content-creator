@@ -608,6 +608,434 @@ async function wyslijWiadomoscAsystenta() {
   await strumieniujSSE(odpowiedz, (dane) => obslugaZdarzeniaCzatu(dane, tura));
 }
 
+// --- Ekran "Styl" (pliki sterujące, SPEC 8.4 / SPEC-frontend 9) ---
+
+let aktywnyPlikStylu = null;
+let trescNaDysku = "";
+
+async function renderujStyl() {
+  OBSZAR.innerHTML = `<h2>Styl</h2><div class="karta"><p class="placeholder">Wczytuję…</p></div>`;
+  let dane;
+  try {
+    const odpowiedz = await fetch("/api/pliki");
+    if (!odpowiedz.ok) throw new Error(`HTTP ${odpowiedz.status}`);
+    dane = await odpowiedz.json();
+  } catch (blad) {
+    OBSZAR.innerHTML = `<h2>Styl</h2><div class="karta"><p class="instrukcja-naprawy">Nie udało się wczytać listy ustawień (${escapeHtml(blad.message)}). Sprawdź, czy serwer aplikacji nadal działa, i odśwież stronę.</p></div>`;
+    return;
+  }
+
+  const zakladki = dane.pliki
+    .map((plik) => {
+      const luki = plik.luki > 0 ? ` <span class="znacznik-luk">${plik.luki}</span>` : "";
+      return `<button class="zakladka-pliku" data-plik="${plik.id}">${escapeHtml(plik.nazwa)}${luki}</button>`;
+    })
+    .join("");
+
+  OBSZAR.innerHTML = `
+    <h2>Styl</h2>
+    <p class="szczegoly">
+      Tu zmieniasz sposób, w jaki asystent pisze. Zmiany działają od następnej
+      rozmowy — nie trzeba nic restartować.
+    </p>
+    <div class="zakladki-plikow">${zakladki}</div>
+    <div id="edytor-stylu"></div>
+  `;
+
+  OBSZAR.querySelectorAll(".zakladka-pliku").forEach((przycisk) => {
+    przycisk.addEventListener("click", () => otworzPlikStylu(przycisk.dataset.plik, dane.pliki));
+  });
+
+  if (dane.pliki.length) otworzPlikStylu(dane.pliki[0].id, dane.pliki);
+}
+
+async function otworzPlikStylu(identyfikator, listaPlikow) {
+  aktywnyPlikStylu = identyfikator;
+  const opisPliku = listaPlikow.find((plik) => plik.id === identyfikator) || {};
+  OBSZAR.querySelectorAll(".zakladka-pliku").forEach((przycisk) => {
+    przycisk.classList.toggle("aktywna", przycisk.dataset.plik === identyfikator);
+  });
+
+  const edytor = document.getElementById("edytor-stylu");
+  edytor.innerHTML = `<div class="karta"><p class="placeholder">Wczytuję…</p></div>`;
+
+  let dane;
+  try {
+    const odpowiedz = await fetch(`/api/pliki/${identyfikator}`);
+    dane = await odpowiedz.json();
+    if (!odpowiedz.ok) throw new Error(dane.blad || `HTTP ${odpowiedz.status}`);
+  } catch (blad) {
+    edytor.innerHTML = `<div class="karta"><p class="instrukcja-naprawy">${escapeHtml(blad.message)}</p></div>`;
+    return;
+  }
+
+  trescNaDysku = dane.tresc;
+  const ostrzezenieLuk =
+    dane.luki > 0
+      ? `<div class="ostrzezenie-koszt">W tym pliku jest ${dane.luki} ${dane.luki === 1 ? "miejsce" : "miejsc"} do uzupełnienia — poszukaj „[DO UZUPEŁNIENIA” i „[DO POTWIERDZENIA”.</div>`
+      : "";
+
+  edytor.innerHTML = `
+    <div class="karta">
+      <strong>${escapeHtml(opisPliku.nazwa || "")}</strong>
+      <p class="szczegoly">${escapeHtml(opisPliku.opis || "")}</p>
+      ${ostrzezenieLuk}
+      <textarea id="pole-stylu" class="monospace" rows="22" style="width:100%;margin-top:0.5rem"></textarea>
+      <div style="margin-top:0.75rem;display:flex;gap:0.5rem;align-items:center">
+        <button class="przycisk-glowny" id="przycisk-zapisz-styl">Zapisz zmiany</button>
+        <button class="przycisk-drugorzedny" id="przycisk-przywroc-styl">Przywróć</button>
+        <span id="status-stylu" class="szczegoly"></span>
+      </div>
+      <div id="podglad-roznicy"></div>
+    </div>
+  `;
+  document.getElementById("pole-stylu").value = dane.tresc;
+  document.getElementById("przycisk-zapisz-styl").addEventListener("click", () => pokazRoznicePrzedZapisem(listaPlikow));
+  document.getElementById("przycisk-przywroc-styl").addEventListener("click", () => {
+    document.getElementById("pole-stylu").value = trescNaDysku;
+    document.getElementById("podglad-roznicy").innerHTML = "";
+    document.getElementById("status-stylu").textContent = "Przywrócono zapisaną wersję.";
+  });
+}
+
+function zbudujRoznice(stara, nowa) {
+  const stareLinie = stara.split("\n");
+  const noweLinie = nowa.split("\n");
+  const usuniete = stareLinie.filter((linia) => !noweLinie.includes(linia));
+  const dodane = noweLinie.filter((linia) => !stareLinie.includes(linia));
+  if (!usuniete.length && !dodane.length) return null;
+  return (
+    usuniete.map((l) => `<div class="linia-usunieta">- ${escapeHtml(l)}</div>`).join("") +
+    dodane.map((l) => `<div class="linia-dodana">+ ${escapeHtml(l)}</div>`).join("")
+  );
+}
+
+function pokazRoznicePrzedZapisem(listaPlikow) {
+  const nowaTresc = document.getElementById("pole-stylu").value;
+  const podglad = document.getElementById("podglad-roznicy");
+  const roznica = zbudujRoznice(trescNaDysku, nowaTresc);
+
+  if (!roznica) {
+    document.getElementById("status-stylu").textContent = "Nie ma żadnych zmian do zapisania.";
+    podglad.innerHTML = "";
+    return;
+  }
+
+  podglad.innerHTML = `
+    <div class="karta" style="margin-top:0.75rem">
+      <strong>Co się zmieni</strong>
+      <div class="roznica monospace">${roznica}</div>
+      <div style="margin-top:0.5rem;display:flex;gap:0.5rem">
+        <button class="przycisk-glowny" id="potwierdz-zapis">Potwierdź zapis</button>
+        <button class="przycisk-drugorzedny" id="anuluj-zapis">Anuluj</button>
+      </div>
+    </div>
+  `;
+  document.getElementById("anuluj-zapis").addEventListener("click", () => {
+    podglad.innerHTML = "";
+  });
+  document.getElementById("potwierdz-zapis").addEventListener("click", () => zapiszPlikStylu(listaPlikow));
+}
+
+async function zapiszPlikStylu(listaPlikow) {
+  const nowaTresc = document.getElementById("pole-stylu").value;
+  const status = document.getElementById("status-stylu");
+  try {
+    const odpowiedz = await fetch(`/api/pliki/${aktywnyPlikStylu}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tresc: nowaTresc }),
+    });
+    const dane = await odpowiedz.json();
+    if (!odpowiedz.ok) throw new Error(dane.blad || `HTTP ${odpowiedz.status}`);
+    trescNaDysku = nowaTresc;
+    document.getElementById("podglad-roznicy").innerHTML = "";
+    status.textContent = "Zapisano.";
+    const wpis = listaPlikow.find((plik) => plik.id === aktywnyPlikStylu);
+    if (wpis) wpis.luki = dane.luki;
+  } catch (blad) {
+    status.textContent = "";
+    document.getElementById("podglad-roznicy").innerHTML = `<p class="instrukcja-naprawy">${escapeHtml(blad.message)}</p>`;
+  }
+}
+
+// --- Ekran "Korpus" (SPEC 8.5 / SPEC-frontend 10) ---
+
+let stanKorpusu = { posty: [], dozwolone_typy: [], docelowo: 20, ostrzezenia: [] };
+let filtrTypu = "";
+let sortujPoReakcjach = false;
+
+async function renderujKorpus() {
+  OBSZAR.innerHTML = `<h2>Korpus</h2><div class="karta"><p class="placeholder">Wczytuję…</p></div>`;
+  try {
+    const odpowiedz = await fetch("/api/korpus");
+    if (!odpowiedz.ok) throw new Error(`HTTP ${odpowiedz.status}`);
+    stanKorpusu = await odpowiedz.json();
+  } catch (blad) {
+    OBSZAR.innerHTML = `<h2>Korpus</h2><div class="karta"><p class="instrukcja-naprawy">Nie udało się wczytać korpusu (${escapeHtml(blad.message)}). Sprawdź, czy serwer aplikacji nadal działa, i odśwież stronę.</p></div>`;
+    return;
+  }
+  rysujKorpus();
+}
+
+function opcjeTypow(wybrany = "") {
+  return stanKorpusu.dozwolone_typy
+    .map((typ) => `<option value="${typ}"${typ === wybrany ? " selected" : ""}>${typ}</option>`)
+    .join("");
+}
+
+function rysujKorpus() {
+  const liczba = stanKorpusu.posty.length;
+  const docelowo = stanKorpusu.docelowo;
+  const procent = Math.min(100, Math.round((liczba / docelowo) * 100));
+  const bezTypu = stanKorpusu.posty.filter((post) => post.wymaga_oznaczenia).length;
+
+  const ostrzezeniaHtml = stanKorpusu.ostrzezenia.length
+    ? `<div class="karta" style="border-color:var(--ostrzezenie)">
+        <strong>Pliki, których nie udało się odczytać</strong>
+        <ul>${stanKorpusu.ostrzezenia.map((o) => `<li>${escapeHtml(o)}</li>`).join("")}</ul>
+       </div>`
+    : "";
+
+  const bezTypuHtml = bezTypu
+    ? `<div class="ostrzezenie-koszt">${bezTypu} ${bezTypu === 1 ? "post wymaga" : "postów wymaga"} oznaczenia rodzaju — wybierz rodzaj w tabeli poniżej.</div>`
+    : "";
+
+  OBSZAR.innerHTML = `
+    <h2>Korpus</h2>
+    <div class="karta">
+      <strong>Opublikowane posty: ${liczba} / ${docelowo} zalecanych</strong>
+      <div class="pasek-postepu"><div class="pasek-wypelnienie" style="width:${procent}%"></div></div>
+      <p class="szczegoly">
+        Im więcej postów tu wgrasz, tym lepiej asystent pisze w Waszym głosie.
+        Dopisuj każdy opublikowany post.
+      </p>
+      ${bezTypuHtml}
+    </div>
+    ${ostrzezeniaHtml}
+    <div class="karta">
+      <div style="display:flex;gap:1rem;align-items:center;flex-wrap:wrap">
+        <label>Rodzaj:
+          <select id="filtr-typu"><option value="">wszystkie</option>${opcjeTypow(filtrTypu)}</select>
+        </label>
+        <label><input type="checkbox" id="sortuj-reakcje"${sortujPoReakcjach ? " checked" : ""}> sortuj po reakcjach</label>
+      </div>
+      <div id="tabela-korpusu"></div>
+    </div>
+    <details class="karta">
+      <summary><strong>Dodaj opublikowany post</strong></summary>
+      <div style="margin-top:0.75rem">
+        <textarea id="nowy-tresc" class="monospace" rows="6" style="width:100%" placeholder="Wklej treść opublikowanego posta…"></textarea>
+        <div class="pola-formularza">
+          <label>Data<input type="date" id="nowy-data" value="${new Date().toISOString().slice(0, 10)}"></label>
+          <label>Rodzaj<select id="nowy-typ">${opcjeTypow()}</select></label>
+          <label>Język<select id="nowy-jezyk"><option value="pl">pl</option><option value="en">en</option><option value="no">no</option></select></label>
+          <label>Reakcje<input type="number" id="nowy-reakcje" value="0" min="0"></label>
+          <label>Komentarze<input type="number" id="nowy-komentarze" value="0" min="0"></label>
+          <label>Adres posta<input type="text" id="nowy-url" placeholder="https://linkedin.com/…"></label>
+        </div>
+        <div style="margin-top:0.75rem;display:flex;gap:0.5rem;align-items:center">
+          <button class="przycisk-glowny" id="przycisk-dodaj-post">Dodaj do korpusu</button>
+          <span id="status-dodawania" class="szczegoly"></span>
+        </div>
+      </div>
+    </details>
+    <details class="karta">
+      <summary><strong>Import z pliku</strong></summary>
+      <p class="szczegoly" style="margin-top:0.5rem">
+        Wgraj eksport z LinkedIna (CSV, XLSX albo JSON). Najpierw pokażemy, co
+        zostanie zaimportowane — nic nie zapisze się bez Twojego potwierdzenia.
+      </p>
+      <input type="file" id="plik-importu" accept=".csv,.xlsx,.xls,.json">
+      <button class="przycisk-drugorzedny" id="przycisk-analizuj">Sprawdź plik</button>
+      <div id="wynik-importu"></div>
+    </details>
+  `;
+
+  document.getElementById("filtr-typu").addEventListener("change", (zdarzenie) => {
+    filtrTypu = zdarzenie.target.value;
+    rysujTabeleKorpusu();
+  });
+  document.getElementById("sortuj-reakcje").addEventListener("change", (zdarzenie) => {
+    sortujPoReakcjach = zdarzenie.target.checked;
+    rysujTabeleKorpusu();
+  });
+  document.getElementById("przycisk-dodaj-post").addEventListener("click", dodajPostDoKorpusu);
+  document.getElementById("przycisk-analizuj").addEventListener("click", analizujPlikImportu);
+  rysujTabeleKorpusu();
+}
+
+function rysujTabeleKorpusu() {
+  const kontener = document.getElementById("tabela-korpusu");
+  let posty = [...stanKorpusu.posty];
+  if (filtrTypu) posty = posty.filter((post) => post.typ === filtrTypu);
+  if (sortujPoReakcjach) posty.sort((a, b) => b.reakcje - a.reakcje);
+
+  if (!posty.length) {
+    kontener.innerHTML = `<p class="placeholder">
+      ${stanKorpusu.posty.length ? "Żaden post nie pasuje do wybranego rodzaju." : "Korpus jest pusty. Dodaj pierwszy opublikowany post formularzem poniżej albo zaimportuj eksport z LinkedIna."}
+    </p>`;
+    return;
+  }
+
+  const wiersze = posty
+    .map(
+      (post) => `
+      <tr class="${post.wymaga_oznaczenia ? "wymaga-oznaczenia" : ""}">
+        <td>${escapeHtml(post.data)}</td>
+        <td>
+          <select data-typ-dla="${escapeHtml(post.plik)}">
+            ${post.wymaga_oznaczenia ? `<option value="">${escapeHtml(post.typ)}</option>` : ""}
+            ${opcjeTypow(post.typ)}
+          </select>
+        </td>
+        <td>${escapeHtml(post.jezyk)}</td>
+        <td>${post.reakcje}</td>
+        <td><details><summary>${escapeHtml(post.tresc.slice(0, 80))}…</summary><pre class="monospace" style="white-space:pre-wrap">${escapeHtml(post.tresc)}</pre></details></td>
+        <td><button class="przycisk-drugorzedny" data-usun="${escapeHtml(post.plik)}">Usuń</button></td>
+      </tr>`
+    )
+    .join("");
+
+  kontener.innerHTML = `
+    <table class="tabela-korpusu">
+      <thead><tr><th>Data</th><th>Rodzaj</th><th>Język</th><th>Reakcje</th><th>Treść</th><th></th></tr></thead>
+      <tbody>${wiersze}</tbody>
+    </table>
+  `;
+
+  kontener.querySelectorAll("[data-typ-dla]").forEach((wybor) => {
+    wybor.addEventListener("change", () => zmienTypPosta(wybor.dataset.typDla, wybor.value));
+  });
+  kontener.querySelectorAll("[data-usun]").forEach((przycisk) => {
+    przycisk.addEventListener("click", () => usunPostZKorpusu(przycisk.dataset.usun));
+  });
+}
+
+async function zmienTypPosta(nazwaPliku, typ) {
+  if (!typ) return;
+  const odpowiedz = await fetch(`/api/korpus/${encodeURIComponent(nazwaPliku)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ typ }),
+  });
+  if (!odpowiedz.ok) {
+    const dane = await odpowiedz.json();
+    alert(dane.blad || "Nie udało się zapisać rodzaju posta.");
+    return;
+  }
+  await renderujKorpus();
+}
+
+async function usunPostZKorpusu(nazwaPliku) {
+  if (!confirm("Usunąć ten post z korpusu? Pliku nie da się przywrócić z aplikacji.")) return;
+  const odpowiedz = await fetch(`/api/korpus/${encodeURIComponent(nazwaPliku)}`, { method: "DELETE" });
+  if (!odpowiedz.ok) {
+    const dane = await odpowiedz.json();
+    alert(dane.blad || "Nie udało się usunąć posta.");
+    return;
+  }
+  await renderujKorpus();
+}
+
+async function dodajPostDoKorpusu() {
+  const status = document.getElementById("status-dodawania");
+  status.textContent = "";
+  const nowy = {
+    tresc: document.getElementById("nowy-tresc").value,
+    data: document.getElementById("nowy-data").value,
+    typ: document.getElementById("nowy-typ").value,
+    jezyk: document.getElementById("nowy-jezyk").value,
+    reakcje: Number(document.getElementById("nowy-reakcje").value || 0),
+    komentarze: Number(document.getElementById("nowy-komentarze").value || 0),
+    url: document.getElementById("nowy-url").value,
+  };
+
+  const odpowiedz = await fetch("/api/korpus", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(nowy),
+  });
+  const dane = await odpowiedz.json();
+  if (!odpowiedz.ok) {
+    status.innerHTML = `<span class="instrukcja-naprawy">${escapeHtml(dane.blad || "Nie udało się dodać posta.")}</span>`;
+    return;
+  }
+  await renderujKorpus();
+}
+
+async function analizujPlikImportu() {
+  const wejscie = document.getElementById("plik-importu");
+  const wynik = document.getElementById("wynik-importu");
+  if (!wejscie.files.length) {
+    wynik.innerHTML = `<p class="instrukcja-naprawy">Najpierw wybierz plik z dysku.</p>`;
+    return;
+  }
+
+  wynik.innerHTML = `<p class="placeholder">Sprawdzam plik…</p>`;
+  const formularz = new FormData();
+  formularz.append("plik", wejscie.files[0]);
+
+  let dane;
+  try {
+    const odpowiedz = await fetch("/api/korpus/import/analiza", { method: "POST", body: formularz });
+    dane = await odpowiedz.json();
+    if (!odpowiedz.ok) throw new Error(dane.blad || `HTTP ${odpowiedz.status}`);
+  } catch (blad) {
+    wynik.innerHTML = `<p class="instrukcja-naprawy">${escapeHtml(blad.message)}</p>`;
+    return;
+  }
+
+  const d = dane.diagnostyka;
+  const wykryte = Object.entries(d.wykryte)
+    .map(([rola, kolumna]) => `<li>${escapeHtml(rola)}: ${kolumna ? `<code>${escapeHtml(kolumna)}</code>` : "<em>nie znaleziono</em>"}</li>`)
+    .join("");
+  const probki = d.probki.map((p) => `<li>${escapeHtml(p)}…</li>`).join("");
+
+  wynik.innerHTML = `
+    <div class="karta" style="margin-top:0.75rem">
+      <strong>Co znaleźliśmy w pliku</strong>
+      <p class="szczegoly">Wierszy w pliku: ${d.wierszy_w_pliku}</p>
+      <ul>${wykryte}</ul>
+      <p><strong>Do zaimportowania: ${d.do_zaimportowania}</strong> ·
+        odrzucone: ${d.odrzucone_reposty} (udostępnienia/puste), ${d.odrzucone_krotkie} (krótsze niż 150 znaków)</p>
+      <p class="szczegoly">Mediana długości treści: ${d.mediana_dlugosci} znaków</p>
+      ${probki ? `<strong>Próbki treści</strong><ul class="szczegoly">${probki}</ul>` : ""}
+      <label>Zaimportuj tylko najlepsze:
+        <input type="number" id="limit-importu" min="1" max="${d.do_zaimportowania}" value="${d.do_zaimportowania}">
+      </label>
+      <div style="margin-top:0.75rem">
+        <button class="przycisk-glowny" id="potwierdz-import" data-identyfikator="${escapeHtml(dane.identyfikator)}">Importuj</button>
+      </div>
+    </div>
+  `;
+  document.getElementById("potwierdz-import").addEventListener("click", wykonajImport);
+}
+
+async function wykonajImport() {
+  const przycisk = document.getElementById("potwierdz-import");
+  const limit = Number(document.getElementById("limit-importu").value) || null;
+  przycisk.disabled = true;
+  przycisk.textContent = "Importuję…";
+
+  const odpowiedz = await fetch("/api/korpus/import/wykonaj", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ identyfikator: przycisk.dataset.identyfikator, limit }),
+  });
+  const dane = await odpowiedz.json();
+  if (!odpowiedz.ok) {
+    document.getElementById("wynik-importu").innerHTML = `<p class="instrukcja-naprawy">${escapeHtml(dane.blad || "Nie udało się zaimportować.")}</p>`;
+    return;
+  }
+
+  await renderujKorpus();
+  const wynik = document.getElementById("wynik-importu");
+  if (wynik) {
+    wynik.innerHTML = `<p>Zaimportowano ${dane.zaimportowane}, odrzucono ${dane.odrzucone_reposty + dane.odrzucone_krotkie} (${dane.odrzucone_reposty} udostępnień, ${dane.odrzucone_krotkie} zbyt krótkich). Oznacz rodzaj u nowych postów w tabeli powyżej.</p>`;
+  }
+}
+
 function przejdzDoZakladki(nazwa) {
   ustawAktywnaZakladke(nazwa);
   window.location.hash = nazwa;
@@ -617,6 +1045,10 @@ function przejdzDoZakladki(nazwa) {
     renderujPosty();
   } else if (nazwa === "asystent") {
     renderujAsystenta();
+  } else if (nazwa === "styl") {
+    renderujStyl();
+  } else if (nazwa === "korpus") {
+    renderujKorpus();
   } else {
     renderujPlaceholder(nazwa);
   }

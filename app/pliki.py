@@ -12,6 +12,87 @@ WZORZEC_POGRUBIENIA = re.compile(r"\*\*(.+?)\*\*")
 NAGLOWKI_POSTA = ("Wariant 1", "Wariant 2", "Wariant 3", "Facebook", "Brief graficzny", "Braki")
 WZORZEC_PODEJSCIA = re.compile(r"^\*\*Podejście:\*\*\s*(.+)$", re.MULTILINE)
 
+ZNACZNIKI_LUK = ("[DO UZUPEŁNIENIA", "[DO POTWIERDZENIA")
+
+# Warstwa jakości — pliki, które operatorka edytuje przez ekran „Styl"
+# (SPEC-frontend 9). Klucz to identyfikator używany w API; ścieżka jest
+# ustalona po stronie serwera, żeby żądanie z przeglądarki nie mogło wskazać
+# dowolnego pliku na dysku (nazwy plików nie pojawiają się też w UI —
+# operatorka widzi tylko nazwę i opis po polsku).
+PLIKI_WARSTWY_JAKOSCI: dict[str, dict[str, str]] = {
+    "glos-marki": {
+        "nazwa": "Głos marki",
+        "opis": "Jak Forces DC pisze: ton, zasady, czego unikać",
+        "sciezka": ".claude/skills/brand-voice/SKILL.md",
+    },
+    "rodzaje-postow": {
+        "nazwa": "Rodzaje postów",
+        "opis": "Struktura i długość każdego typu posta",
+        "sciezka": ".claude/skills/schematy-postow/SKILL.md",
+    },
+    "zasady-planowania": {
+        "nazwa": "Zasady planowania",
+        "opis": "Jak asystent buduje plan miesiąca",
+        "sciezka": ".claude/skills/strategia-contentu/SKILL.md",
+    },
+    "zakazane-zwroty": {
+        "nazwa": "Zakazane zwroty",
+        "opis": "Lista zwrotów, które nie mają wyjść",
+        "sciezka": "baza-wiedzy/zakazane-zwroty.md",
+    },
+    "fakty-o-firmie": {
+        "nazwa": "Fakty o firmie",
+        "opis": "Co asystent wie o Forces DC i czego nie wolno publikować",
+        "sciezka": "baza-wiedzy/forces-dc-fakty.md",
+    },
+    "zrodla-branzowe": {
+        "nazwa": "Źródła branżowe",
+        "opis": "Skąd asystent bierze newsy z branży",
+        "sciezka": "baza-wiedzy/zrodla-branzowe.md",
+    },
+}
+
+
+def policz_luki(tresc: str) -> int:
+    """Liczy miejsca wymagające uzupełnienia przez człowieka (SPEC-frontend 9)."""
+    return sum(tresc.count(znacznik) for znacznik in ZNACZNIKI_LUK)
+
+
+def lista_plikow_jakosci(katalog_danych: Path) -> list[dict[str, object]]:
+    """Lista plików sterujących na ekran „Styl" — bez treści, z licznikiem luk."""
+    wynik: list[dict[str, object]] = []
+    for identyfikator, opis_pliku in PLIKI_WARSTWY_JAKOSCI.items():
+        plik = katalog_danych / opis_pliku["sciezka"]
+        istnieje = plik.is_file()
+        tresc = plik.read_text(encoding="utf-8") if istnieje else ""
+        wynik.append(
+            {
+                "id": identyfikator,
+                "nazwa": opis_pliku["nazwa"],
+                "opis": opis_pliku["opis"],
+                "istnieje": istnieje,
+                "luki": policz_luki(tresc),
+            }
+        )
+    return wynik
+
+
+def czytaj_plik_jakosci(katalog_danych: Path, identyfikator: str) -> str:
+    """Treść pliku sterującego. `KeyError` dla nieznanego identyfikatora."""
+    opis_pliku = PLIKI_WARSTWY_JAKOSCI[identyfikator]
+    plik = katalog_danych / opis_pliku["sciezka"]
+    return plik.read_text(encoding="utf-8") if plik.is_file() else ""
+
+
+def zapisz_plik_jakosci(katalog_danych: Path, identyfikator: str, tresc: str) -> None:
+    """Zapisuje plik sterujący. Zmiana działa od następnego pytania do
+    asystenta — silnik czyta te pliki z dysku przy każdym wywołaniu, więc
+    restart serwera nie jest potrzebny (SPEC sekcja 11)."""
+    opis_pliku = PLIKI_WARSTWY_JAKOSCI[identyfikator]
+    plik = katalog_danych / opis_pliku["sciezka"]
+    plik.parent.mkdir(parents=True, exist_ok=True)
+    plik.write_text(tresc, encoding="utf-8")
+
 
 def czytaj_frazy_nda(katalog_danych: Path) -> list[str]:
     """Wyciąga listę fraz z sekcji "Czego NIE wolno publikować" w
