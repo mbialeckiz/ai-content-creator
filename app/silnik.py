@@ -448,6 +448,14 @@ async def _przetworz_zapytanie(
                     "uzycie": wiadomosc.usage,
                     "sciezka_pliku": sciezka_zapisu,
                 }
+                # Wychodzimy z pętli od razu po wyniku, zamiast czekać, aż
+                # iterator sam się skończy. Inaczej powstaje zakleszczenie:
+                # strumień wejścia trzymamy otwarty do końca pętli (bo wymaga
+                # tego can_use_tool), CLI nie kończy się, dopóki wejście jest
+                # otwarte, a pętla czeka na koniec CLI. Objawiało się to tak,
+                # że plik był już zapisany na dysku, a przeglądarka w
+                # nieskończoność pokazywała „buduję…”.
+                break
     except ProcessError as blad:
         logger.error("Błąd procesu CLI Claude Code: %s", blad)
         yield {
