@@ -464,6 +464,58 @@ def _katalog_artykulow(katalog_danych: Path) -> Path:
     return katalog_danych / PODKATALOG_ARTYKULOW
 
 
+# --- Plik .env (ustawienia aplikacji) ---
+
+NAZWA_KLUCZA_API = "ANTHROPIC_API_KEY"
+
+
+def stan_pliku_env(katalog_aplikacji: Path) -> dict[str, object]:
+    """Gdzie leży .env i czy ma wypełniony klucz — BEZ zwracania wartości
+    klucza (SPEC 10.5: klucz nigdy nie wychodzi z backendu)."""
+    plik = katalog_aplikacji / ".env"
+    if not plik.is_file():
+        return {"sciezka": str(plik), "istnieje": False, "klucz_wypelniony": False}
+
+    wypelniony = False
+    for linia in plik.read_text(encoding="utf-8").splitlines():
+        if linia.strip().startswith(f"{NAZWA_KLUCZA_API}="):
+            wypelniony = bool(linia.split("=", 1)[1].strip().strip("\"'"))
+    return {"sciezka": str(plik), "istnieje": True, "klucz_wypelniony": wypelniony}
+
+
+def zapisz_klucz_api(katalog_aplikacji: Path, klucz: str) -> None:
+    """Wpisuje klucz do .env, zachowując resztę ustawień i komentarzy.
+
+    Operatorka nie ma jak edytować pliku zaczynającego się od kropki —
+    Finder go nie pokazuje, a TextEdit potrafi zapisać kopię w innym
+    miejscu. Bez tej ścieżki każda wymiana klucza wymagałaby administratora.
+    """
+    plik = katalog_aplikacji / ".env"
+    wzorzec = katalog_aplikacji / ".env.example"
+
+    if plik.is_file():
+        linie = plik.read_text(encoding="utf-8").splitlines()
+    elif wzorzec.is_file():
+        linie = wzorzec.read_text(encoding="utf-8").splitlines()
+    else:
+        linie = [f"{NAZWA_KLUCZA_API}="]
+
+    nowe_linie = []
+    podmieniono = False
+    for linia in linie:
+        if linia.strip().startswith(f"{NAZWA_KLUCZA_API}="):
+            nowe_linie.append(f"{NAZWA_KLUCZA_API}={klucz}")
+            podmieniono = True
+        else:
+            nowe_linie.append(linia)
+    if not podmieniono:
+        nowe_linie.append(f"{NAZWA_KLUCZA_API}={klucz}")
+
+    plik.write_text("\n".join(nowe_linie) + "\n", encoding="utf-8")
+    # Plik z kluczem czytelny tylko dla właściciela konta.
+    plik.chmod(0o600)
+
+
 def bezpieczna_nazwa_pliku(nazwa: str) -> str:
     """Nazwa pliku bez ścieżek i znaków, które mogłyby wyprowadzić zapis
     poza katalog artykułów."""

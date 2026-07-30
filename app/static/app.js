@@ -55,8 +55,11 @@ function renderujPlaceholder(nazwaZakladki) {
 }
 
 function elementSprawdzenia(sprawdzenie) {
+  // Przy statusie „ok" podpowiedź jest wskazówką, nie usterką — czerwony
+  // tekst pod zielonym ptaszkiem czytał się jak błąd.
+  const klasaPodpowiedzi = sprawdzenie.status === "ok" ? "szczegoly" : "instrukcja-naprawy";
   const naprawa = sprawdzenie.instrukcja_naprawy
-    ? `<div class="instrukcja-naprawy">${sprawdzenie.instrukcja_naprawy}</div>`
+    ? `<div class="${klasaPodpowiedzi}">${sprawdzenie.instrukcja_naprawy}</div>`
     : "";
   return `
     <div class="sprawdzenie status-${sprawdzenie.status}">
@@ -68,6 +71,53 @@ function elementSprawdzenia(sprawdzenie) {
       </div>
     </div>
   `;
+}
+
+// Klucz API ustawiany z poziomu aplikacji. Plik .env zaczyna się od kropki,
+// więc Finder go nie pokazuje, a TextEdit potrafi zapisać kopię w innym
+// miejscu — bez tego formularza wymiana klucza zawsze wymagałaby
+// administratora. Klucz nigdy nie wraca z serwera do przeglądarki.
+function elementUstawienKlucza(ustawienia) {
+  const stan = ustawienia.klucz_wypelniony
+    ? `<span class="warunek-ok">✓ Klucz jest zapisany w tym pliku</span>`
+    : `<span class="warunek-brak">✗ W tym pliku nie ma jeszcze klucza</span>`;
+
+  return `
+    <div class="karta">
+      <h3 style="margin-top:0">Klucz dostępu do asystenta</h3>
+      <p class="szczegoly">Aplikacja czyta ustawienia wyłącznie z tego pliku:</p>
+      <p class="monospace" style="font-size:0.82rem;word-break:break-all">${escapeHtml(ustawienia.sciezka || "—")}</p>
+      <p style="margin:0.35rem 0">${stan}</p>
+      <p class="szczegoly">
+        Jeśli wpisywałeś klucz gdzie indziej, trafił do innego pliku niż ten.
+        Wklej go poniżej — zapiszemy w odpowiednim miejscu, bez restartu aplikacji.
+      </p>
+      <div class="pasek-narzedzi" style="margin:0.5rem 0 0">
+        <input type="password" id="pole-klucza" style="flex:1;min-width:320px" placeholder="sk-ant-…" autocomplete="off">
+        <button class="przycisk-glowny" id="przycisk-zapisz-klucz">Zapisz klucz</button>
+        <span id="status-klucza" class="szczegoly"></span>
+      </div>
+    </div>
+  `;
+}
+
+async function zapiszKluczApi() {
+  const pole = document.getElementById("pole-klucza");
+  const status = document.getElementById("status-klucza");
+  status.textContent = "Zapisuję…";
+  try {
+    const odpowiedz = await fetch("/api/klucz-api", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ klucz: pole.value }),
+    });
+    const dane = await odpowiedz.json();
+    if (!odpowiedz.ok) throw new Error(dane.blad || `HTTP ${odpowiedz.status}`);
+    pole.value = "";
+    renderujDiagnostyke();
+  } catch (blad) {
+    status.innerHTML = `<span class="instrukcja-naprawy">${escapeHtml(blad.message)}</span>`;
+  }
 }
 
 async function renderujDiagnostyke() {
@@ -114,6 +164,8 @@ async function renderujDiagnostyke() {
     </div>
     <div class="karta">${listaSprawdzen}</div>
 
+    ${elementUstawienKlucza(dane.ustawienia || {})}
+
     <div class="karta">
       <h3 style="margin-top:0">Testowe wywołanie silnika</h3>
       <div class="ostrzezenie-koszt">
@@ -127,6 +179,10 @@ async function renderujDiagnostyke() {
   `;
 
   document.getElementById("przycisk-testu").addEventListener("click", uruchomTestSilnika);
+  document.getElementById("przycisk-zapisz-klucz").addEventListener("click", zapiszKluczApi);
+  document.getElementById("pole-klucza").addEventListener("keydown", (zdarzenie) => {
+    if (zdarzenie.key === "Enter") { zdarzenie.preventDefault(); zapiszKluczApi(); }
+  });
 }
 
 function uruchomTestSilnika() {

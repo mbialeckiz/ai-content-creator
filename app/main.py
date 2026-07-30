@@ -87,8 +87,52 @@ async def api_diagnostyka() -> JSONResponse:
         {
             "sprawdzenia": [dataclasses.asdict(s) for s in raport.sprawdzenia],
             "liczniki": raport.liczniki,
+            "ustawienia": pliki.stan_pliku_env(KATALOG_APLIKACJI),
         }
     )
+
+
+class NowyKluczApi(BaseModel):
+    klucz: str
+
+
+@app.post("/api/klucz-api", response_model=None)
+async def api_zapisz_klucz(dane: NowyKluczApi) -> JSONResponse:
+    """Zapisuje klucz do .env i od razu udostępnia go bieżącemu procesowi,
+    więc nie trzeba restartować aplikacji.
+
+    Klucz nigdy nie jest zwracany do przeglądarki (SPEC 10.5) — endpoint
+    potwierdza tylko zapis. Aplikacja słucha wyłącznie na localhost.
+    """
+    klucz = dane.klucz.strip().strip("\"'")
+    if not klucz:
+        return JSONResponse({"blad": "Wklej klucz, zanim zapiszesz."}, status_code=400)
+    if not klucz.startswith("sk-ant-") or len(klucz) < 40:
+        return JSONResponse(
+            {
+                "blad": (
+                    "To nie wygląda na klucz API — powinien zaczynać się od "
+                    "sk-ant- i być znacznie dłuższy. Skopiuj go ponownie "
+                    "z console.anthropic.com (sekcja API Keys)."
+                )
+            },
+            status_code=400,
+        )
+
+    try:
+        pliki.zapisz_klucz_api(KATALOG_APLIKACJI, klucz)
+    except OSError as blad:
+        logger.error("Nie udało się zapisać klucza do .env: %s", blad)
+        return JSONResponse(
+            {"blad": "Nie udało się zapisać ustawień — sprawdź uprawnienia do katalogu aplikacji."},
+            status_code=500,
+        )
+
+    # Bieżący proces dostaje klucz od razu; CLI dziedziczy go przy następnym
+    # wywołaniu, więc restart nie jest potrzebny.
+    os.environ["ANTHROPIC_API_KEY"] = klucz
+    logger.info("Zapisano nowy klucz API (wartość nie jest logowana).")
+    return JSONResponse({"zapisano": True})
 
 
 def _jako_sse(dane: dict) -> str:
