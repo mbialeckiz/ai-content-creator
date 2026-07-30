@@ -1,31 +1,99 @@
 #!/bin/bash
-# Uruchamia Forces DC Content Studio: instaluje zależności (jeśli trzeba),
-# startuje serwer i otwiera przeglądarkę. Dwuklik w Finderze wystarczy.
+# Uruchamia Forces DC Content Studio: sprawdza środowisko, instaluje
+# zależności (jeśli trzeba), startuje serwer i otwiera przeglądarkę.
+# Dwuklik w Finderze wystarczy.
 set -e
 
 cd "$(dirname "$0")"
 
-if [ ! -d ".venv" ]; then
-    echo "Pierwsze uruchomienie — przygotowuję środowisko (chwilę to potrwa)..."
-    python3 -m venv .venv
-fi
+MINIMALNY_PYTHON="3.10"
 
-source .venv/bin/activate
-pip install --quiet --upgrade pip
-pip install --quiet -r requirements.txt
-
-if [ ! -f ".env" ]; then
+zakoncz_z_komunikatem() {
     echo ""
-    echo "Brakuje pliku .env — skopiuj .env.example do .env i uzupełnij klucz API."
-    echo "Otwieram szablon do edycji..."
-    cp .env.example .env
-    open -e .env
-    echo "Uzupełnij plik .env, zapisz go, zamknij edytor i uruchom start.command ponownie."
+    echo "$1"
+    echo ""
     read -n 1 -s -r -p "Naciśnij dowolny klawisz, aby zamknąć to okno..."
     exit 1
+}
+
+# Czy dany interpreter spełnia minimum wersji.
+wersja_wystarczy() {
+    "$1" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)' 2>/dev/null
+}
+
+# macOS dostarcza systemowego Pythona 3.9, który jest za stary dla silnika
+# agentowego. Zanim cokolwiek zainstalujemy, szukamy nowszego — użytkownik
+# często ma go już obok systemowego (Homebrew, python.org).
+znajdz_pythona() {
+    for kandydat in python3.14 python3.13 python3.12 python3.11 python3.10 python3; do
+        if command -v "$kandydat" >/dev/null 2>&1 && wersja_wystarczy "$kandydat"; then
+            command -v "$kandydat"
+            return 0
+        fi
+    done
+    return 1
+}
+
+if ! PYTHON=$(znajdz_pythona); then
+    ZNALEZIONA="brak"
+    if command -v python3 >/dev/null 2>&1; then
+        ZNALEZIONA=$(python3 -c 'import sys; print("%d.%d" % sys.version_info[:2])' 2>/dev/null || echo "nieznana")
+    fi
+    zakoncz_z_komunikatem "Aplikacja wymaga Pythona w wersji ${MINIMALNY_PYTHON} lub nowszej.
+Na tym komputerze znaleziono wersję: ${ZNALEZIONA}.
+
+Jak to naprawić:
+  1. Wejdź na https://www.python.org/downloads/
+  2. Pobierz i zainstaluj najnowszą wersję dla macOS (przycisk na górze strony)
+  3. Uruchom start.command ponownie
+
+Instalacja niczego nie zepsuje — nowy Python stanie obok tego,
+który jest już w systemie."
+fi
+
+# Środowisko zbudowane starym Pythonem trzeba postawić od nowa, inaczej
+# instalacja zależności będzie się wywalać przy każdym uruchomieniu.
+if [ -d ".venv" ] && ! wersja_wystarczy ".venv/bin/python"; then
+    echo "Środowisko było zbudowane starszą wersją Pythona — buduję je od nowa..."
+    rm -rf .venv
+fi
+
+if [ ! -d ".venv" ]; then
+    echo "Pierwsze uruchomienie — przygotowuję środowisko (chwilę to potrwa)..."
+    "$PYTHON" -m venv .venv
+fi
+
+echo "Sprawdzam zależności..."
+.venv/bin/python -m pip install --quiet --upgrade pip
+if ! .venv/bin/python -m pip install --quiet -r requirements.txt; then
+    zakoncz_z_komunikatem "Nie udało się zainstalować składników aplikacji.
+Najczęstsza przyczyna to brak połączenia z internetem — sprawdź je
+i uruchom start.command ponownie.
+
+Jeśli problem wraca, pokaż to okno administratorowi."
+fi
+
+if [ ! -f ".env" ]; then
+    cp .env.example .env
+    open -e .env
+    zakoncz_z_komunikatem "Brakuje jeszcze klucza dostępu do asystenta.
+
+Otworzyłem plik ustawień w edytorze. Wklej klucz w linii
+zaczynającej się od ANTHROPIC_API_KEY= , zapisz plik (Cmd+S),
+zamknij edytor i uruchom start.command ponownie.
+
+Klucz dostaniesz od administratora."
 fi
 
 PORT="${PORT:-8420}"
+echo ""
+echo "Uruchamiam aplikację. Otworzy się w przeglądarce pod adresem:"
+echo "   http://localhost:${PORT}"
+echo ""
+echo "To okno musi pozostać otwarte, dopóki pracujesz z aplikacją."
+echo "Żeby zakończyć — zamknij to okno albo naciśnij Ctrl+C."
+echo ""
+
 (sleep 2 && open "http://localhost:${PORT}") &
 
-python3 -m uvicorn app.main:app --host 127.0.0.1 --port "${PORT}"
+.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port "${PORT}"
