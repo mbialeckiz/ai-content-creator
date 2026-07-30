@@ -58,6 +58,25 @@ def policz_luki(tresc: str) -> int:
     return sum(tresc.count(znacznik) for znacznik in ZNACZNIKI_LUK)
 
 
+def wczytaj_zasady_stylu(katalog_danych: Path, limit_znakow: int = 6000) -> str:
+    """Skleja zasady stylu i listę zakazanych zwrotów w jeden blok tekstu.
+
+    Używane przez tryb poprawiania: zamiast pozwalać agentowi szukać tych
+    plików narzędziami (każde wywołanie to osobna tura i osobny narzut
+    kontekstu), podajemy mu je od razu. Poprawka ma być tania i natychmiastowa.
+    """
+    czesci: list[str] = []
+    for identyfikator in ("glos-marki", "rodzaje-postow", "zakazane-zwroty"):
+        opis = PLIKI_WARSTWY_JAKOSCI[identyfikator]
+        plik = katalog_danych / opis["sciezka"]
+        if not plik.is_file():
+            continue
+        tresc = plik.read_text(encoding="utf-8").strip()
+        if tresc:
+            czesci.append(f"### {opis['nazwa']}\n{tresc}")
+    return "\n\n".join(czesci)[:limit_znakow]
+
+
 def lista_plikow_jakosci(katalog_danych: Path) -> list[dict[str, object]]:
     """Lista plików sterujących na ekran „Styl" — bez treści, z licznikiem luk."""
     wynik: list[dict[str, object]] = []
@@ -209,6 +228,34 @@ def wczytaj_wygenerowany_post(sciezka: Path) -> WygenerowanyPost:
     post.braki = _rozbierz_braki(sekcje.get("Braki", ""))
     post.kompletny = all(naglowek in sekcje for naglowek in NAGLOWKI_POSTA)
     return post
+
+
+def podmien_wariant(sciezka: Path, indeks: int, nowa_tresc: str) -> None:
+    """Podmienia treść jednego wariantu w zapisanym pliku posta, zostawiając
+    etykietę podejścia i resztę sekcji bez zmian.
+
+    Zapisujemy na dysk, a nie tylko w przeglądarce: poprawiony wariant ma
+    przetrwać przełączenie zakładki tak samo jak pierwotnie wygenerowany.
+    """
+    naglowek = f"Wariant {indeks + 1}"
+    tresc = sciezka.read_text(encoding="utf-8")
+    sekcje = _wytnij_sekcje(tresc)
+    if naglowek not in sekcje:
+        raise KeyError(f"Plik nie ma sekcji „{naglowek}”.")
+
+    dopasowanie = WZORZEC_PODEJSCIA.search(sekcje[naglowek])
+    etykieta = f"{dopasowanie.group(0)}\n" if dopasowanie else ""
+    nowa_sekcja = f"## {naglowek}\n{etykieta}{nowa_tresc.strip()}\n"
+
+    # Podmieniamy dokładnie ten jeden blok `## Wariant N` — od jego nagłówka
+    # do następnego nagłówka drugiego poziomu albo końca pliku.
+    wzorzec = re.compile(
+        rf"^## {re.escape(naglowek)}[ \t]*\n.*?(?=^## |\Z)",
+        re.MULTILINE | re.DOTALL,
+    )
+    if not wzorzec.search(tresc):
+        raise KeyError(f"Nie udało się odnaleźć sekcji „{naglowek}” w pliku.")
+    sciezka.write_text(wzorzec.sub(lambda _: nowa_sekcja + "\n", tresc, count=1), encoding="utf-8")
 
 
 def lista_wygenerowanych_postow(katalog_danych: Path) -> list[dict[str, object]]:

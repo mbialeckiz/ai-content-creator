@@ -871,3 +871,25 @@ select.status-opublikowany { color: var(--ok); font-weight: 650; }
 .link-posta:hover {
   text-decoration: underline;
 }
+
+.pole-poprawki {
+  padding: 0 1rem 0.85rem;
+  border-top: 1px solid var(--linia);
+  background: var(--tlo-podniesione);
+}
+
+.poprawka-wiersz {
+  display: flex;
+  gap: 0.5rem;
+  padding-top: 0.7rem;
+}
+
+.pole-polecenia {
+  flex: 1;
+  font-size: 0.9rem;
+}
+
+.status-poprawki {
+  min-height: 1.1rem;
+  margin-top: 0.35rem;
+}

@@ -71,6 +71,7 @@ PARAMETRY_UZYWANE_PRZEZ_KOD = frozenset(
         "cwd",
         "setting_sources",
         "skills",
+        "tools",
         "allowed_tools",
         "disallowed_tools",
         "system_prompt",
@@ -169,8 +170,15 @@ def zbuduj_opcje(
     mcp_servers: dict[str, Any] | None = None,
     limit_usd: float | None = None,
     maks_tur: int | None = None,
+    bez_narzedzi: bool = False,
 ) -> ClaudeAgentOptions:
-    """Buduje `ClaudeAgentOptions` wspólne dla wszystkich trybów agenta."""
+    """Buduje `ClaudeAgentOptions` wspólne dla wszystkich trybów agenta.
+
+    `bez_narzedzi=True` wyłącza wbudowane narzędzia całkowicie (parametr
+    `tools=[]` w SDK). Używane tam, gdzie potrzebna jest jedna odpowiedź
+    tekstowa i nic więcej — model nie marnuje wtedy tur na szukanie plików,
+    które i tak podajemy mu wprost w poleceniu.
+    """
     lista_narzedzi = (narzedzia if narzedzia is not None else DOZWOLONE_NARZEDZIA) + (
         dodatkowe_dozwolone_narzedzia or []
     )
@@ -178,7 +186,8 @@ def zbuduj_opcje(
         cwd=katalog_danych,
         setting_sources=["project"],
         skills="all",
-        allowed_tools=lista_narzedzi,
+        tools=[] if bez_narzedzi else None,
+        allowed_tools=[] if bez_narzedzi else lista_narzedzi,
         disallowed_tools=ZABRONIONE_NARZEDZIA,
         system_prompt=system_prompt,
         can_use_tool=_zbuduj_zezwalacz(katalog_danych),
@@ -625,6 +634,53 @@ async def uruchom_asystenta(katalog_danych: Path, wiadomosc: str) -> AsyncIterat
     async for zdarzenie in _przetworz_zapytanie(
         opcje, wiadomosc, narzedzie_propozycji=NAZWA_NARZEDZIA_PROPOZYCJI
     ):
+        yield zdarzenie
+
+
+PROMPT_POPRAWKA = (
+    "Jesteś redaktorem treści LinkedIn dla Forces DC (fit-out data center, "
+    "Norwegia). Dostajesz gotowy post i jedno polecenie od operatorki, co "
+    "w nim zmienić. Twoim zadaniem jest przepisać ten post zgodnie z "
+    "poleceniem.\n\n"
+    f"{GRANICA_NDA} {ZAKAZ_TRESCI_PRAWNYCH}\n\n"
+    "Zasady:\n"
+    "- Zmieniaj tylko to, o co prosi polecenie. Reszta tekstu ma zostać "
+    "rozpoznawalnie tym samym postem, nie nową wersją napisaną od zera.\n"
+    "- Zachowaj istniejące znaczniki [DO UZUPEŁNIENIA: ...], chyba że "
+    "polecenie wprost każe je usunąć. Nie wymyślaj faktów, liczb ani nazw, "
+    "żeby je zastąpić.\n"
+    "- Trzymaj się zasad stylu podanych w poleceniu.\n\n"
+    "ODPOWIEDŹ: zwróć wyłącznie gotową treść posta. Bez wstępu, bez "
+    "komentarza, bez cudzysłowów, bez nagłówków markdown i bez wyjaśniania, "
+    "co zmieniłeś. Sama treść, gotowa do wklejenia na LinkedIn."
+)
+
+
+async def popraw_wariant(
+    katalog_danych: Path, tresc: str, polecenie: str, zasady_stylu: str = ""
+) -> AsyncIterator[dict[str, Any]]:
+    """Przepisuje jeden wariant posta według polecenia operatorki
+    (SPEC-frontend 7, „Poprawianie").
+
+    Tryb bez narzędzi i z niskim sufitem kosztu: to ma być szybka pętla
+    poprawek, nie ponowne generowanie. Zasady stylu wstrzykujemy w polecenie,
+    zamiast pozwalać modelowi ich szukać — oszczędza to kilka tur.
+    """
+    opcje = zbuduj_opcje(
+        katalog_danych,
+        PROMPT_POPRAWKA,
+        bez_narzedzi=True,
+        limit_usd=0.20,
+        maks_tur=3,
+    )
+    czesci = []
+    if zasady_stylu.strip():
+        czesci.append(f"ZASADY STYLU:\n{zasady_stylu.strip()}\n")
+    czesci.append(f"OBECNA TREŚĆ POSTA:\n{tresc.strip()}\n")
+    czesci.append(f"CO ZMIENIĆ:\n{polecenie.strip()}")
+
+    yield {"typ": "status", "tekst": "Poprawiam tekst…"}
+    async for zdarzenie in _przetworz_zapytanie(opcje, "\n".join(czesci)):
         yield zdarzenie
 
 

@@ -444,6 +444,94 @@ async def api_wczytaj_post(nazwa_pliku: str) -> JSONResponse:
     return JSONResponse({"post": dataclasses.asdict(post), "plik": sciezka.name})
 
 
+class PoleceniePoprawki(BaseModel):
+    plik: str
+    indeks: int
+    polecenie: str
+
+
+async def _strumien_poprawki(plik: str, indeks: int, polecenie: str) -> AsyncIterator[str]:
+    katalog = katalog_danych()
+    sciezka = pliki.sciezka_wygenerowanego_posta(katalog, plik)
+    post = pliki.wczytaj_wygenerowany_post(sciezka)
+    obecna = post.warianty[indeks].tresc
+
+    zebrane: list[str] = []
+    async for zdarzenie in silnik.popraw_wariant(
+        katalog, obecna, polecenie, pliki.wczytaj_zasady_stylu(katalog)
+    ):
+        if zdarzenie["typ"] == "fragment":
+            # Fragmenty poprawki zbieramy, zamiast wysyłać na bieżąco: dopóki
+            # nie znamy całości, nie da się jej ani zapisać, ani policzyć znaków.
+            zebrane.append(zdarzenie["tekst"])
+            continue
+        if zdarzenie["typ"] == "wynik" and not zdarzenie["bledny"]:
+            nowa = "".join(zebrane).strip()
+            if not nowa:
+                zdarzenie["blad_poprawki"] = "Asystent nie zwrócił poprawionej treści."
+            else:
+                try:
+                    pliki.podmien_wariant(sciezka, indeks, nowa)
+                    zdarzenie["nowa_tresc"] = nowa
+                    zdarzenie["znaki"] = len(nowa)
+                except (KeyError, OSError) as blad:
+                    logger.error("Nie udało się zapisać poprawki w %s: %s", sciezka, blad)
+                    zdarzenie["blad_poprawki"] = (
+                        "Poprawka powstała, ale nie udało się jej zapisać — "
+                        "sprawdź, czy folder danych jest dostępny."
+                    )
+        yield _jako_sse(zdarzenie)
+
+
+@app.post("/api/popraw", response_model=None)
+async def api_popraw(dane: PoleceniePoprawki) -> JSONResponse | StreamingResponse:
+    """Poprawianie wariantu jednym poleceniem (SPEC-frontend 7)."""
+    polecenie = dane.polecenie.strip()
+    if not polecenie:
+        return JSONResponse({"blad": "Napisz, co zmienić w tym poście."}, status_code=400)
+
+    blokada = _blokada_nda_lub_none(polecenie)
+    if blokada:
+        return blokada
+
+    sciezka = pliki.sciezka_wygenerowanego_posta(katalog_danych(), dane.plik)
+    if not sciezka.is_file():
+        return JSONResponse({"blad": "Nie znaleźliśmy tego posta."}, status_code=404)
+    try:
+        post = pliki.wczytaj_wygenerowany_post(sciezka)
+    except OSError as blad:
+        logger.error("Nie udało się odczytać posta %s: %s", sciezka, blad)
+        return JSONResponse({"blad": "Nie udało się odczytać posta."}, status_code=500)
+    if not 0 <= dane.indeks < len(post.warianty):
+        return JSONResponse({"blad": "Ten wariant nie istnieje w zapisanym poście."}, status_code=400)
+
+    return StreamingResponse(
+        _strumien_poprawki(dane.plik, dane.indeks, polecenie),
+        media_type="text/event-stream",
+    )
+
+
+class PrzywroceniePoprzedniej(BaseModel):
+    plik: str
+    indeks: int
+    tresc: str
+
+
+@app.post("/api/popraw/cofnij", response_model=None)
+async def api_cofnij_poprawke(dane: PrzywroceniePoprzedniej) -> JSONResponse:
+    """Przywraca poprzednią treść wariantu. Wersje trzyma przeglądarka, więc
+    cofanie nie wymaga wywołania modelu ani osobnej historii na dysku."""
+    sciezka = pliki.sciezka_wygenerowanego_posta(katalog_danych(), dane.plik)
+    if not sciezka.is_file():
+        return JSONResponse({"blad": "Nie znaleźliśmy tego posta."}, status_code=404)
+    try:
+        pliki.podmien_wariant(sciezka, dane.indeks, dane.tresc)
+    except (KeyError, OSError) as blad:
+        logger.error("Nie udało się cofnąć poprawki w %s: %s", sciezka, blad)
+        return JSONResponse({"blad": "Nie udało się przywrócić poprzedniej wersji."}, status_code=500)
+    return JSONResponse({"przywrocono": True})
+
+
 @app.delete("/api/posty/{nazwa_pliku}", response_model=None)
 async def api_usun_wygenerowany_post(nazwa_pliku: str) -> JSONResponse:
     sciezka = pliki.sciezka_wygenerowanego_posta(katalog_danych(), nazwa_pliku)

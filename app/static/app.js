@@ -394,9 +394,15 @@ function podgladZLiniaObciecia(tresc) {
   `;
 }
 
+// Poprzednie wersje wariantów, na potrzeby „Cofnij". Trzymane w przeglądarce,
+// bo cofnięcie to przywrócenie tekstu, który operatorka przed chwilą widziała —
+// nie ma powodu budować pod to historii na dysku.
+const poprzednieWersje = {};
+
 function elementWynikuPosta(post, sciezkaPliku) {
   const idWyniku = ++licznikWynikowPostow;
   wynikiPostow[idWyniku] = post;
+  wynikiPostow[idWyniku].plik = post.plik || sciezkaPliku;
 
   const kartyWariantow = post.warianty
     .map(
@@ -421,7 +427,10 @@ function elementWynikuPosta(post, sciezkaPliku) {
         </div>
         <div class="wariant-stopka">
           <button class="przycisk-drugorzedny" data-kopiuj-wariant="${indeks}">Kopiuj</button>
+          <button class="przycisk-drugorzedny" data-popraw="${indeks}">Popraw</button>
+          <button class="przycisk-drugorzedny" data-cofnij="${indeks}" hidden>Cofnij</button>
         </div>
+        <div class="pole-poprawki" data-poprawka-dla="${indeks}" hidden></div>
       </div>`
     )
     .join("");
@@ -502,6 +511,162 @@ function podepnijPrzyciskiKopiowania(zakres = document) {
       kopiujDoSchowka(wynikDlaPrzycisku(przycisk).brief_graficzny, przycisk)
     );
   });
+
+  zakres.querySelectorAll("[data-popraw]").forEach((przycisk) => {
+    if (przycisk.dataset.podpieto) return;
+    przycisk.dataset.podpieto = "1";
+    przycisk.addEventListener("click", () => otworzPolePoprawki(przycisk));
+  });
+
+  zakres.querySelectorAll("[data-cofnij]").forEach((przycisk) => {
+    if (przycisk.dataset.podpieto) return;
+    przycisk.dataset.podpieto = "1";
+    przycisk.addEventListener("click", () => cofnijPoprawke(przycisk));
+  });
+}
+
+function kartaWariantuDla(przycisk) {
+  return przycisk.closest(".karta-wariantu");
+}
+
+function otworzPolePoprawki(przycisk) {
+  const indeks = przycisk.dataset.popraw;
+  const karta = kartaWariantuDla(przycisk);
+  const pole = karta.querySelector(`[data-poprawka-dla="${indeks}"]`);
+
+  if (!pole.hidden) {
+    pole.hidden = true;
+    return;
+  }
+
+  pole.hidden = false;
+  pole.innerHTML = `
+    <div class="poprawka-wiersz">
+      <input type="text" class="pole-polecenia" placeholder="Napisz, co zmienić — np. „skróć o połowę” albo „mniej formalnie”">
+      <button class="przycisk-glowny przycisk-wyslij-poprawke">Popraw</button>
+    </div>
+    <div class="status-poprawki szczegoly"></div>
+  `;
+
+  const wejscie = pole.querySelector(".pole-polecenia");
+  const wyslij = () => wyslijPoprawke(przycisk, wejscie.value);
+  pole.querySelector(".przycisk-wyslij-poprawke").addEventListener("click", wyslij);
+  wejscie.addEventListener("keydown", (zdarzenie) => {
+    if (zdarzenie.key === "Enter") {
+      zdarzenie.preventDefault();
+      wyslij();
+    }
+  });
+  wejscie.focus();
+}
+
+async function wyslijPoprawke(przycisk, polecenie) {
+  const indeks = Number(przycisk.dataset.popraw);
+  const karta = kartaWariantuDla(przycisk);
+  const kontener = karta.closest("[data-post-id]");
+  const wynik = wynikiPostow[kontener.dataset.postId];
+  const pole = karta.querySelector(`[data-poprawka-dla="${indeks}"]`);
+  const status = pole.querySelector(".status-poprawki");
+  const przyciskWyslij = pole.querySelector(".przycisk-wyslij-poprawke");
+
+  if (!polecenie.trim()) {
+    status.innerHTML = `<span class="instrukcja-naprawy">Napisz, co zmienić.</span>`;
+    return;
+  }
+
+  przyciskWyslij.disabled = true;
+  status.textContent = "Poprawiam…";
+
+  let odpowiedz;
+  try {
+    odpowiedz = await fetch("/api/popraw", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ plik: wynik.plik, indeks, polecenie }),
+    });
+  } catch (blad) {
+    status.innerHTML = `<span class="instrukcja-naprawy">Nie udało się połączyć z serwerem (${escapeHtml(blad.message)}).</span>`;
+    przyciskWyslij.disabled = false;
+    return;
+  }
+
+  if ((odpowiedz.headers.get("content-type") || "").includes("application/json")) {
+    const dane = await odpowiedz.json();
+    status.innerHTML = dane.zablokowane_nda
+      ? `<span class="instrukcja-naprawy">Polecenie zawiera nazwę objętą NDA: „${escapeHtml(dane.fraza)}". Popraw je.</span>`
+      : `<span class="instrukcja-naprawy">${escapeHtml(dane.blad || "Nie udało się poprawić.")}</span>`;
+    przyciskWyslij.disabled = false;
+    return;
+  }
+
+  await strumieniujSSE(odpowiedz, (zdarzenie) => {
+    if (zdarzenie.typ === "status") {
+      status.textContent = zdarzenie.tekst;
+    } else if (zdarzenie.typ === "blad") {
+      status.innerHTML = `<span class="instrukcja-naprawy">${escapeHtml(zdarzenie.tekst)}</span>`;
+      przyciskWyslij.disabled = false;
+    } else if (zdarzenie.typ === "wynik") {
+      dopiszKoszt(zdarzenie.koszt_usd);
+      if (zdarzenie.blad_poprawki) {
+        status.innerHTML = `<span class="instrukcja-naprawy">${escapeHtml(zdarzenie.blad_poprawki)}</span>`;
+        przyciskWyslij.disabled = false;
+        return;
+      }
+      if (zdarzenie.nowa_tresc) {
+        poprzednieWersje[`${kontener.dataset.postId}:${indeks}`] = wynik.warianty[indeks].tresc;
+        wynik.warianty[indeks].tresc = zdarzenie.nowa_tresc;
+        wynik.warianty[indeks].znaki = zdarzenie.znaki;
+        odswiezWariant(karta, zdarzenie.nowa_tresc, zdarzenie.znaki);
+        karta.querySelector(`[data-cofnij="${indeks}"]`).hidden = false;
+        pole.hidden = true;
+      }
+    }
+  });
+}
+
+function odswiezWariant(karta, tresc, znaki) {
+  karta.querySelector(".podglad-tresc").parentElement.innerHTML = `
+    <div class="podglad-autor">
+      <div class="podglad-awatar">FDC</div>
+      <div>
+        <div class="podglad-nazwa">Forces DC</div>
+        <div class="podglad-podpis">Fit-out data center · Norwegia</div>
+      </div>
+    </div>
+    ${podgladZLiniaObciecia(tresc)}
+  `;
+  const licznikZnakow = karta.querySelector(".wariant-naglowek .szczegoly");
+  const etykieta = licznikZnakow.querySelector(".wariant-etykieta").outerHTML;
+  licznikZnakow.innerHTML = `${etykieta} ${znaki} znaków`;
+}
+
+async function cofnijPoprawke(przycisk) {
+  const indeks = Number(przycisk.dataset.cofnij);
+  const karta = kartaWariantuDla(przycisk);
+  const kontener = karta.closest("[data-post-id]");
+  const wynik = wynikiPostow[kontener.dataset.postId];
+  const klucz = `${kontener.dataset.postId}:${indeks}`;
+  const poprzednia = poprzednieWersje[klucz];
+  if (!poprzednia) return;
+
+  przycisk.disabled = true;
+  const odpowiedz = await fetch("/api/popraw/cofnij", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ plik: wynik.plik, indeks, tresc: poprzednia }),
+  });
+  przycisk.disabled = false;
+  if (!odpowiedz.ok) {
+    const dane = await odpowiedz.json();
+    alert(dane.blad || "Nie udało się przywrócić poprzedniej wersji.");
+    return;
+  }
+
+  wynik.warianty[indeks].tresc = poprzednia;
+  wynik.warianty[indeks].znaki = poprzednia.length;
+  odswiezWariant(karta, poprzednia, poprzednia.length);
+  delete poprzednieWersje[klucz];
+  przycisk.hidden = true;
 }
 
 async function strumieniujSSE(odpowiedz, obslugaZdarzenia) {
