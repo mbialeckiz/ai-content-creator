@@ -137,6 +137,20 @@ def _policz_luki_bazy_wiedzy(katalog_danych: Path) -> int:
     )
 
 
+def _policz_dokumenty(katalog_danych: Path) -> int:
+    katalog = katalog_danych / "artykuly"
+    if not katalog.is_dir():
+        return 0
+    return sum(1 for plik in katalog.iterdir() if plik.is_file() and not plik.name.startswith("."))
+
+
+def _policz_miesiace_materialow(katalog_danych: Path) -> int:
+    katalog = katalog_danych / "input-firmowy"
+    if not katalog.is_dir():
+        return 0
+    return len(list(katalog.glob("*.md")))
+
+
 def _sprawdz_klucz_api() -> WynikSprawdzenia:
     if os.environ.get("ANTHROPIC_API_KEY"):
         return WynikSprawdzenia(
@@ -158,6 +172,8 @@ def _sprawdz_katalog_danych(katalog_danych: Path) -> WynikSprawdzenia:
             "Ścieżka katalogu danych",
             "ok",
             str(katalog_danych.resolve()),
+            "Jeśli Twoje wcześniejsze posty i materiały „zniknęły”, sprawdź, "
+            "czy to na pewno ten folder — aplikacja czyta i zapisuje wyłącznie tutaj.",
         )
     return WynikSprawdzenia(
         "katalog_danych",
@@ -183,5 +199,7 @@ def uruchom_diagnostyke(katalog_danych: Path) -> RaportDiagnostyczny:
     raport.liczniki = {
         "postow_w_korpusie": _policz_posty_korpusu(katalog_danych),
         "luk_w_bazie_wiedzy": _policz_luki_bazy_wiedzy(katalog_danych),
+        "wgranych_dokumentow": _policz_dokumenty(katalog_danych),
+        "miesiecy_z_materialami": _policz_miesiace_materialow(katalog_danych),
     }
     return raport

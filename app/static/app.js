@@ -103,6 +103,14 @@ async function renderujDiagnostyke() {
         <div class="wartosc">${dane.liczniki.luk_w_bazie_wiedzy}</div>
         <div class="etykieta">luk [DO UZUPEŁNIENIA] w bazie wiedzy</div>
       </div>
+      <div class="licznik">
+        <div class="wartosc">${dane.liczniki.wgranych_dokumentow ?? 0}</div>
+        <div class="etykieta">wgranych artykułów i dokumentów</div>
+      </div>
+      <div class="licznik">
+        <div class="wartosc">${dane.liczniki.miesiecy_z_materialami ?? 0}</div>
+        <div class="etykieta">miesięcy z materiałami z firmy</div>
+      </div>
     </div>
     <div class="karta">${listaSprawdzen}</div>
 
@@ -1495,6 +1503,7 @@ async function renderujMaterialy() {
     ${blokPusty}
     <div id="prosba-o-materialy"></div>
     ${bloki}
+    <div id="sekcja-artykulow"></div>
   `;
 
   document.getElementById("miesiac-materialow").addEventListener("change", (zdarzenie) => {
@@ -1526,6 +1535,91 @@ async function renderujMaterialy() {
       zapiszMaterialy();
     });
   });
+
+  wczytajArtykuly();
+}
+
+// Wgrane artykuły i dokumenty źródłowe. Leżą w katalogu danych, więc
+// przeżywają restart aplikacji i jadą razem z folderem na inny komputer.
+// Nie są przypisane do miesiąca — asystent korzysta z nich niezależnie
+// od tego, który miesiąc jest wybrany.
+async function wczytajArtykuly() {
+  const kontener = document.getElementById("sekcja-artykulow");
+  if (!kontener) return;
+
+  let dane;
+  try {
+    const odpowiedz = await fetch("/api/artykuly");
+    if (!odpowiedz.ok) throw new Error(`HTTP ${odpowiedz.status}`);
+    dane = await odpowiedz.json();
+  } catch {
+    kontener.innerHTML = "";
+    return;
+  }
+
+  const lista = dane.artykuly.length
+    ? dane.artykuly
+        .map(
+          (wpis) => `
+          <li>
+            <div>
+              ${escapeHtml(wpis.plik)}
+              <span class="szczegoly">${wpis.rozmiar_kb} KB${wpis.czytelny ? "" : " · asystent tego nie odczyta"}</span>
+            </div>
+            <button class="przycisk-drugorzedny maly" data-usun-artykul="${escapeHtml(wpis.plik)}">usuń</button>
+          </li>`
+        )
+        .join("")
+    : `<li class="placeholder">Nie wgrano jeszcze żadnych dokumentów.</li>`;
+
+  kontener.innerHTML = `
+    <div class="karta">
+      <strong>Artykuły i dokumenty</strong>
+      <p class="szczegoly">
+        Wgraj artykuły, raporty albo notatki, z których asystent ma korzystać
+        przy pisaniu. Zostają na stałe — nie trzeba wgrywać ich ponownie po
+        zamknięciu aplikacji. Obsługiwane: PDF, TXT, MD, CSV, HTML
+        (plik z Worda zapisz najpierw jako PDF).
+      </p>
+      <ul class="lista-materialow">${lista}</ul>
+      <div class="pasek-narzedzi" style="margin:0.75rem 0 0">
+        <input type="file" id="plik-artykulu" accept=".pdf,.txt,.md,.csv,.html,.htm">
+        <button class="przycisk-drugorzedny" id="przycisk-wgraj-artykul">Wgraj dokument</button>
+        <span id="status-artykulu" class="szczegoly"></span>
+      </div>
+    </div>
+  `;
+
+  document.getElementById("przycisk-wgraj-artykul").addEventListener("click", wgrajArtykul);
+  kontener.querySelectorAll("[data-usun-artykul]").forEach((przycisk) => {
+    przycisk.addEventListener("click", async () => {
+      if (!confirm(`Usunąć „${przycisk.dataset.usunArtykul}"?`)) return;
+      await fetch(`/api/artykuly/${encodeURIComponent(przycisk.dataset.usunArtykul)}`, { method: "DELETE" });
+      wczytajArtykuly();
+    });
+  });
+}
+
+async function wgrajArtykul() {
+  const wejscie = document.getElementById("plik-artykulu");
+  const status = document.getElementById("status-artykulu");
+  if (!wejscie.files.length) {
+    status.innerHTML = `<span class="instrukcja-naprawy">Najpierw wybierz plik z dysku.</span>`;
+    return;
+  }
+
+  status.textContent = "Wgrywam…";
+  const formularz = new FormData();
+  formularz.append("plik", wejscie.files[0]);
+
+  try {
+    const odpowiedz = await fetch("/api/artykuly", { method: "POST", body: formularz });
+    const dane = await odpowiedz.json();
+    if (!odpowiedz.ok) throw new Error(dane.blad || `HTTP ${odpowiedz.status}`);
+    wczytajArtykuly();
+  } catch (blad) {
+    status.innerHTML = `<span class="instrukcja-naprawy">${escapeHtml(blad.message)}</span>`;
+  }
 }
 
 function dodajWpisMaterialow(indeksSekcji, sekcje) {

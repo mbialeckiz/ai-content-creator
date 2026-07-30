@@ -33,9 +33,22 @@ KATALOG_APLIKACJI = Path(__file__).resolve().parent.parent
 
 
 def katalog_danych() -> Path:
-    """Czytana przy każdym żądaniu, nie raz przy starcie — SPEC wymaga, żeby
-    zmiana KATALOG_DANYCH w .env działała bez zmian w kodzie (sekcja 11)."""
-    return Path(os.environ.get("KATALOG_DANYCH", "./dane")).resolve()
+    """Katalog roboczy z danymi operatorki.
+
+    Czytany przy każdym żądaniu, nie raz przy starcie — SPEC wymaga, żeby
+    zmiana KATALOG_DANYCH w .env działała bez zmian w kodzie (sekcja 11).
+
+    Ścieżkę względną liczymy od katalogu aplikacji, NIE od katalogu, z
+    którego uruchomiono serwer. Wcześniej było odwrotnie i wystarczyło
+    uruchomić aplikację z innego miejsca, żeby `./dane` wskazało inny —
+    pusty — folder: korpus, materiały i plany „znikały", choć leżały
+    nietknięte w poprzednim katalogu. Ścieżka bezwzględna (np. folder
+    na Dysku Google) działa jak wcześniej.
+    """
+    wskazana = Path(os.environ.get("KATALOG_DANYCH", "").strip() or "./dane")
+    if wskazana.is_absolute():
+        return wskazana.resolve()
+    return (KATALOG_APLIKACJI / wskazana).resolve()
 
 
 @asynccontextmanager
@@ -499,6 +512,63 @@ async def api_materialy(miesiac: str) -> JSONResponse:
             "puste": pliki.czy_materialy_puste(materialy),
         }
     )
+
+
+@app.get("/api/artykuly")
+async def api_lista_artykulow() -> JSONResponse:
+    return JSONResponse(
+        {
+            "artykuly": pliki.lista_artykulow(katalog_danych()),
+            "obslugiwane": list(pliki.ROZSZERZENIA_ARTYKULOW),
+        }
+    )
+
+
+@app.post("/api/artykuly", response_model=None)
+async def api_wgraj_artykul(plik: UploadFile = File(...)) -> JSONResponse:
+    """Wgranie dokumentu źródłowego (artykuł, notatka, raport), z którego
+    asystent może korzystać przy pisaniu. Zapis do katalogu danych, więc
+    dokument przeżywa restart aplikacji i jedzie razem z folderem danych."""
+    nazwa = plik.filename or "dokument"
+    if Path(nazwa).suffix.lower() not in pliki.ROZSZERZENIA_ARTYKULOW:
+        return JSONResponse(
+            {
+                "blad": (
+                    f"Nie obsługujemy plików „{Path(nazwa).suffix or 'bez rozszerzenia'}”. "
+                    "Wgraj dokument w formacie PDF, TXT, MD, CSV albo HTML. "
+                    "Plik z Worda zapisz najpierw jako PDF."
+                )
+            },
+            status_code=400,
+        )
+
+    cel = pliki.przygotuj_miejsce_na_artykul(katalog_danych(), nazwa)
+    try:
+        with cel.open("wb") as docelowy:
+            shutil.copyfileobj(plik.file, docelowy)
+    except OSError as blad:
+        logger.error("Nie udało się zapisać dokumentu %s: %s", cel, blad)
+        return JSONResponse(
+            {"blad": "Nie udało się zapisać dokumentu — sprawdź, czy folder danych jest dostępny."},
+            status_code=500,
+        )
+    return JSONResponse({"zapisano": True, "plik": cel.name})
+
+
+@app.delete("/api/artykuly/{nazwa_pliku}", response_model=None)
+async def api_usun_artykul(nazwa_pliku: str) -> JSONResponse:
+    sciezka = pliki.sciezka_artykulu(katalog_danych(), nazwa_pliku)
+    if not sciezka.is_file():
+        return JSONResponse({"blad": "Nie znaleźliśmy tego dokumentu."}, status_code=404)
+    try:
+        sciezka.unlink()
+    except OSError as blad:
+        logger.error("Nie udało się usunąć dokumentu %s: %s", sciezka, blad)
+        return JSONResponse(
+            {"blad": "Nie udało się usunąć dokumentu — sprawdź, czy folder danych jest dostępny."},
+            status_code=500,
+        )
+    return JSONResponse({"usunieto": True})
 
 
 class ZapisMaterialow(BaseModel):

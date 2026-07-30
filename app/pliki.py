@@ -447,3 +447,62 @@ def zapisz_materialy(
 
 def czy_materialy_puste(materialy: dict[str, list[str]]) -> bool:
     return not any(wpisy for wpisy in materialy.values())
+
+
+# --- Wgrane artykuły i dokumenty źródłowe ---
+
+PODKATALOG_ARTYKULOW = "artykuly"
+
+# Formaty, które asystent faktycznie przeczyta. Word (.docx) świadomie
+# pominięty: plik dałoby się zapisać, ale asystent odczytałby z niego
+# śmieci, więc lepiej powiedzieć to wprost przy wgrywaniu niż udawać,
+# że działa.
+ROZSZERZENIA_ARTYKULOW = (".md", ".txt", ".pdf", ".csv", ".html", ".htm")
+
+
+def _katalog_artykulow(katalog_danych: Path) -> Path:
+    return katalog_danych / PODKATALOG_ARTYKULOW
+
+
+def bezpieczna_nazwa_pliku(nazwa: str) -> str:
+    """Nazwa pliku bez ścieżek i znaków, które mogłyby wyprowadzić zapis
+    poza katalog artykułów."""
+    sama_nazwa = Path(nazwa).name
+    oczyszczona = re.sub(r"[^\w.\- ]", "_", sama_nazwa, flags=re.UNICODE).strip()
+    return oczyszczona or "dokument"
+
+
+def lista_artykulow(katalog_danych: Path) -> list[dict[str, object]]:
+    katalog = _katalog_artykulow(katalog_danych)
+    if not katalog.is_dir():
+        return []
+    wpisy = []
+    for plik in katalog.iterdir():
+        if not plik.is_file() or plik.name.startswith("."):
+            continue
+        wpisy.append(
+            {
+                "plik": plik.name,
+                "rozmiar_kb": max(1, round(plik.stat().st_size / 1024)),
+                "czytelny": plik.suffix.lower() in ROZSZERZENIA_ARTYKULOW,
+            }
+        )
+    return sorted(wpisy, key=lambda wpis: str(wpis["plik"]).lower())
+
+
+def sciezka_artykulu(katalog_danych: Path, nazwa_pliku: str) -> Path:
+    return _katalog_artykulow(katalog_danych) / bezpieczna_nazwa_pliku(nazwa_pliku)
+
+
+def przygotuj_miejsce_na_artykul(katalog_danych: Path, nazwa_pliku: str) -> Path:
+    """Zwraca ścieżkę do zapisu, nie nadpisując istniejącego pliku."""
+    katalog = _katalog_artykulow(katalog_danych)
+    katalog.mkdir(parents=True, exist_ok=True)
+
+    bezpieczna = bezpieczna_nazwa_pliku(nazwa_pliku)
+    cel = katalog / bezpieczna
+    licznik = 2
+    while cel.exists():
+        cel = katalog / f"{Path(bezpieczna).stem}-{licznik}{Path(bezpieczna).suffix}"
+        licznik += 1
+    return cel
