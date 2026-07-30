@@ -364,6 +364,45 @@ async def api_import_wykonaj(dane: PotwierdzenieImportu) -> JSONResponse:
     )
 
 
+@app.get("/api/posty")
+async def api_lista_postow() -> JSONResponse:
+    """Wcześniej wygenerowane posty — czytane z dysku, żeby przetrwały
+    przełączenie zakładki, odświeżenie strony i restart aplikacji."""
+    return JSONResponse({"posty": pliki.lista_wygenerowanych_postow(katalog_danych())})
+
+
+@app.get("/api/posty/{nazwa_pliku}", response_model=None)
+async def api_wczytaj_post(nazwa_pliku: str) -> JSONResponse:
+    sciezka = pliki.sciezka_wygenerowanego_posta(katalog_danych(), nazwa_pliku)
+    if not sciezka.is_file():
+        return JSONResponse({"blad": "Nie znaleźliśmy tego posta."}, status_code=404)
+    try:
+        post = pliki.wczytaj_wygenerowany_post(sciezka)
+    except OSError as blad:
+        logger.error("Nie udało się odczytać posta %s: %s", sciezka, blad)
+        return JSONResponse(
+            {"blad": "Nie udało się odczytać posta — sprawdź, czy folder danych jest dostępny."},
+            status_code=500,
+        )
+    return JSONResponse({"post": dataclasses.asdict(post), "plik": sciezka.name})
+
+
+@app.delete("/api/posty/{nazwa_pliku}", response_model=None)
+async def api_usun_wygenerowany_post(nazwa_pliku: str) -> JSONResponse:
+    sciezka = pliki.sciezka_wygenerowanego_posta(katalog_danych(), nazwa_pliku)
+    if not sciezka.is_file():
+        return JSONResponse({"blad": "Nie znaleźliśmy tego posta."}, status_code=404)
+    try:
+        sciezka.unlink()
+    except OSError as blad:
+        logger.error("Nie udało się usunąć posta %s: %s", sciezka, blad)
+        return JSONResponse(
+            {"blad": "Nie udało się usunąć posta — sprawdź, czy folder danych jest dostępny."},
+            status_code=500,
+        )
+    return JSONResponse({"usunieto": True})
+
+
 # --- Ekran „Plan" (tryb Strateg, SPEC 8.1 / SPEC-frontend 6) ---
 
 

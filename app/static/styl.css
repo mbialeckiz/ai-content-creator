@@ -508,3 +508,13 @@ input[type="month"] {
   color: var(--ostrzezenie);
   font-weight: 600;
 }
+
+.link-posta {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--akcent);
+  font-size: 0.95rem;
+  text-align: left;
+  text-decoration: underline;
+}

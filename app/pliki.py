@@ -211,6 +211,45 @@ def wczytaj_wygenerowany_post(sciezka: Path) -> WygenerowanyPost:
     return post
 
 
+def lista_wygenerowanych_postow(katalog_danych: Path) -> list[dict[str, object]]:
+    """Wygenerowane posty leżące w output/, od najnowszego.
+
+    Ekran „Posty" odbudowuje się od zera przy każdym wejściu, więc bez tej
+    listy wynik znikał po przełączeniu zakładki. Źródłem prawdy są pliki
+    na dysku (CLAUDE.md #2), nie stan w przeglądarce — dzięki temu posty
+    przeżywają też odświeżenie strony i restart aplikacji.
+    """
+    katalog = katalog_danych / "output"
+    if not katalog.is_dir():
+        return []
+
+    wpisy: list[dict[str, object]] = []
+    for plik in katalog.glob("*.md"):
+        try:
+            post = wczytaj_wygenerowany_post(plik)
+        except OSError:
+            continue
+        podglad = post.warianty[0].tresc if post.warianty else post.surowy_markdown
+        # Nazwa pliku ma postać RRRR-MM-DD_slug — rozbijamy ją na datę i temat.
+        data, _, slug = plik.stem.partition("_")
+        wpisy.append(
+            {
+                "plik": plik.name,
+                "data": data,
+                "temat": slug.replace("-", " ") or plik.stem,
+                "podglad": " ".join(podglad.split())[:120],
+                "braki": len(post.braki),
+            }
+        )
+    return sorted(wpisy, key=lambda wpis: wpis["plik"], reverse=True)
+
+
+def sciezka_wygenerowanego_posta(katalog_danych: Path, nazwa_pliku: str) -> Path:
+    """Ścieżka do posta w output/. `Path(...).name` odcina próby wyjścia
+    poza katalog, gdyby nazwa przyszła z przeglądarki zmanipulowana."""
+    return katalog_danych / "output" / Path(nazwa_pliku).name
+
+
 # --- Plan miesiąca (SPEC 7 i 8.1, SPEC-frontend 6) ---
 
 NAGLOWEK_CZEGO_ZABRAKLO = "Czego zabrakło"

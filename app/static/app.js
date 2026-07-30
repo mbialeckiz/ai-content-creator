@@ -203,12 +203,88 @@ function renderujPosty() {
       <div class="log-przebiegu" id="log-redaktora" hidden></div>
     </div>
     <div id="wynik-redaktora"></div>
+    <div id="historia-postow"></div>
   `;
   document.getElementById("przycisk-generuj").addEventListener("click", uruchomRedaktora);
 
   if (briefZPlanu) {
     document.getElementById("pole-briefu").value = briefZPlanu;
     briefZPlanu = "";
+  }
+
+  wczytajHistoriePostow();
+}
+
+// Lista wcześniej wygenerowanych postów, czytana z dysku. Ekran odbudowuje
+// się przy każdym wejściu, więc bez tego wynik znikał po przełączeniu
+// zakładki — mimo że plik cały czas leżał w output/.
+async function wczytajHistoriePostow() {
+  const kontener = document.getElementById("historia-postow");
+  if (!kontener) return;
+
+  let dane;
+  try {
+    const odpowiedz = await fetch("/api/posty");
+    if (!odpowiedz.ok) throw new Error(`HTTP ${odpowiedz.status}`);
+    dane = await odpowiedz.json();
+  } catch {
+    kontener.innerHTML = "";
+    return;
+  }
+
+  if (!dane.posty.length) {
+    kontener.innerHTML = "";
+    return;
+  }
+
+  const wiersze = dane.posty
+    .map(
+      (wpis) => `
+      <li>
+        <div>
+          <button class="link-posta" data-otworz-post="${escapeHtml(wpis.plik)}">
+            ${escapeHtml(wpis.data)} — ${escapeHtml(wpis.temat)}
+          </button>
+          ${wpis.braki ? `<span class="znacznik-luk">${wpis.braki} braków</span>` : ""}
+          <div class="szczegoly">${escapeHtml(wpis.podglad)}…</div>
+        </div>
+        <button class="przycisk-drugorzedny maly" data-usun-post="${escapeHtml(wpis.plik)}">usuń</button>
+      </li>`
+    )
+    .join("");
+
+  kontener.innerHTML = `
+    <div class="karta">
+      <strong>Wcześniej wygenerowane posty</strong>
+      <p class="szczegoly">Zapisane na dysku w folderze danych. Kliknij, żeby otworzyć.</p>
+      <ul class="lista-materialow">${wiersze}</ul>
+    </div>
+  `;
+
+  kontener.querySelectorAll("[data-otworz-post]").forEach((przycisk) => {
+    przycisk.addEventListener("click", () => otworzZapisanyPost(przycisk.dataset.otworzPost));
+  });
+  kontener.querySelectorAll("[data-usun-post]").forEach((przycisk) => {
+    przycisk.addEventListener("click", async () => {
+      if (!confirm("Usunąć ten post? Pliku nie da się przywrócić z aplikacji.")) return;
+      await fetch(`/api/posty/${encodeURIComponent(przycisk.dataset.usunPost)}`, { method: "DELETE" });
+      wczytajHistoriePostow();
+    });
+  });
+}
+
+async function otworzZapisanyPost(nazwaPliku) {
+  const wynik = document.getElementById("wynik-redaktora");
+  wynik.innerHTML = `<div class="karta"><p class="placeholder">Wczytuję…</p></div>`;
+  try {
+    const odpowiedz = await fetch(`/api/posty/${encodeURIComponent(nazwaPliku)}`);
+    const dane = await odpowiedz.json();
+    if (!odpowiedz.ok) throw new Error(dane.blad || `HTTP ${odpowiedz.status}`);
+    wynik.innerHTML = elementWynikuPosta(dane.post, dane.plik);
+    podepnijPrzyciskiKopiowania();
+    wynik.scrollIntoView({ behavior: "smooth", block: "start" });
+  } catch (blad) {
+    wynik.innerHTML = `<div class="karta"><p class="instrukcja-naprawy">${escapeHtml(blad.message)}</p></div>`;
   }
 }
 
@@ -409,6 +485,7 @@ async function uruchomRedaktora() {
       } else if (dane.post) {
         wynik.innerHTML = elementWynikuPosta(dane.post, dane.sciezka_pliku);
         podepnijPrzyciskiKopiowania();
+        wczytajHistoriePostow();
       } else {
         dopiszWpis("Brak zapisanego pliku wynikowego — sprawdź log powyżej.", "blad");
       }
