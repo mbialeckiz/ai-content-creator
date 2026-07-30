@@ -7,6 +7,32 @@
   <link rel="stylesheet" href="/static/styl.css" />
 </head>
 <body>
+  <!-- Ikony jako inline SVG — bez zewnętrznych bibliotek i bez build stepu
+       (CLAUDE.md). Symbole wstawiane przez <use> w nawigacji. -->
+  <svg style="display:none" aria-hidden="true">
+    <symbol id="ikona-asystent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.9 8.9 0 0 1-4-.9L3 21l1.9-4.6A8.4 8.4 0 0 1 12 3.1a8.4 8.4 0 0 1 9 8.4z"/>
+    </symbol>
+    <symbol id="ikona-plan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="3" y="4" width="18" height="17" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>
+    </symbol>
+    <symbol id="ikona-posty" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M4 3h11l5 5v13a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v6h6M8 13h8M8 17h5"/>
+    </symbol>
+    <symbol id="ikona-materialy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+    </symbol>
+    <symbol id="ikona-styl" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 19l7-7a2.8 2.8 0 0 0-4-4l-7 7-1 5z"/><path d="M5 21h6"/>
+    </symbol>
+    <symbol id="ikona-korpus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M4 5a2 2 0 0 1 2-2h9l5 5v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M8 8h5M8 12h8M8 16h8"/>
+    </symbol>
+    <symbol id="ikona-diagnostyka" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M9 11l2 2 4-4"/><path d="M12 3l7 3v6c0 4.5-3 8-7 9-4-1-7-4.5-7-9V6z"/>
+    </symbol>
+  </svg>
+
   <div class="uklad">
     <header class="naglowek">
       <h1>Forces DC Content Studio</h1>
@@ -15,15 +41,15 @@
 
     <nav class="nawigacja">
       <ul id="lista-zakladek">
-        <li><button class="zakladka" data-zakladka="asystent">Asystent</button></li>
-        <li><button class="zakladka" data-zakladka="plan">Plan</button></li>
-        <li><button class="zakladka" data-zakladka="posty">Posty</button></li>
-        <li><button class="zakladka" data-zakladka="materialy">Materiały</button></li>
-        <li><button class="zakladka" data-zakladka="styl">Styl</button></li>
-        <li><button class="zakladka" data-zakladka="korpus">Korpus</button></li>
+        <li><button class="zakladka" data-zakladka="asystent"><svg class="ikona"><use href="#ikona-asystent"/></svg>Asystent</button></li>
+        <li><button class="zakladka" data-zakladka="plan"><svg class="ikona"><use href="#ikona-plan"/></svg>Plan</button></li>
+        <li><button class="zakladka" data-zakladka="posty"><svg class="ikona"><use href="#ikona-posty"/></svg>Posty</button></li>
+        <li><button class="zakladka" data-zakladka="materialy"><svg class="ikona"><use href="#ikona-materialy"/></svg>Materiały</button></li>
+        <li><button class="zakladka" data-zakladka="styl"><svg class="ikona"><use href="#ikona-styl"/></svg>Styl</button></li>
+        <li><button class="zakladka" data-zakladka="korpus"><svg class="ikona"><use href="#ikona-korpus"/></svg>Korpus</button></li>
       </ul>
       <div class="diagnostyka-link">
-        <button data-zakladka="diagnostyka">Sprawdź środowisko</button>
+        <button data-zakladka="diagnostyka"><svg class="ikona" style="width:15px;height:15px"><use href="#ikona-diagnostyka"/></svg>Sprawdź środowisko</button>
       </div>
     </nav>
 

@@ -290,12 +290,43 @@ async function otworzZapisanyPost(nazwaPliku) {
 
 function elementBlokadyNda(fraza) {
   return `
-    <div class="karta" style="border-color:var(--blad)">
-      <h3 style="margin-top:0;color:var(--blad)">⚠ To polecenie zawiera nazwę objętą NDA</h3>
+    <div class="karta karta-bledu">
+      <h3 style="color:var(--blad)">⚠ To polecenie zawiera nazwę objętą NDA</h3>
       <p>Wykryto: „${escapeHtml(fraza)}"</p>
       <p>Nie wysłaliśmy tego do modelu ani do sieci.</p>
       <p><strong>Popraw polecenie albo usuń nazwę klienta.</strong></p>
     </div>
+  `;
+}
+
+// Ile znaków LinkedIn pokazuje przed „…zobacz więcej". Wartość podana
+// w SPEC-frontend 7 z adnotacją [ZWERYFIKUJ aktualny limit] — LinkedIn jej
+// nie publikuje i zmienia ją w czasie, więc traktuj jako orientacyjną.
+// Linia w podglądzie ma uświadamiać, że początek posta decyduje o zasięgu,
+// a nie udawać, że odwzorowuje LinkedIn co do znaku.
+const ZNAKOW_PRZED_OBCIECIEM = 200;
+
+// Model pisze briefy zwykłym markdownem. Pokazywanie ich z surowymi
+// gwiazdkami czcionką maszynową wyglądało jak kod, a to tekst do przeczytania
+// przez grafika. Zamieniamy tylko pogrubienie — kolejność ma znaczenie:
+// najpierw ucieczka HTML, potem znaczniki, żeby treść nie mogła wstrzyknąć
+// własnego HTML-a.
+function prostyMarkdown(tekst) {
+  return escapeHtml(tekst).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+}
+
+function podgladZLiniaObciecia(tresc) {
+  if (tresc.length <= ZNAKOW_PRZED_OBCIECIEM) {
+    return `<p class="podglad-tresc">${escapeHtml(tresc)}</p>`;
+  }
+  // Tniemy na granicy słowa, żeby podgląd nie urywał się w połowie wyrazu.
+  const kandydat = tresc.slice(0, ZNAKOW_PRZED_OBCIECIEM);
+  const granica = kandydat.lastIndexOf(" ");
+  const punkt = granica > ZNAKOW_PRZED_OBCIECIEM - 40 ? granica : ZNAKOW_PRZED_OBCIECIEM;
+  return `
+    <p class="podglad-tresc">${escapeHtml(tresc.slice(0, punkt))}<span class="podglad-dalej"> …zobacz więcej</span></p>
+    <div class="linia-obciecia">tyle widać przed rozwinięciem</div>
+    <p class="podglad-tresc">${escapeHtml(tresc.slice(punkt).trimStart())}</p>
   `;
 }
 
@@ -306,13 +337,27 @@ function elementWynikuPosta(post, sciezkaPliku) {
   const kartyWariantow = post.warianty
     .map(
       (wariant, indeks) => `
-      <div class="karta">
-        <div style="display:flex;justify-content:space-between;align-items:baseline">
+      <div class="karta karta-wariantu">
+        <div class="wariant-naglowek">
           <strong>Wariant ${indeks + 1}</strong>
-          <span class="szczegoly">${escapeHtml(wariant.etykieta)} · ${wariant.znaki} znaków</span>
+          <span class="szczegoly">
+            <span class="wariant-etykieta">${escapeHtml(wariant.etykieta)}</span>
+            ${wariant.znaki} znaków
+          </span>
         </div>
-        <pre class="monospace" style="white-space:pre-wrap;margin:0.5rem 0">${escapeHtml(wariant.tresc)}</pre>
-        <button class="przycisk-drugorzedny" data-kopiuj-wariant="${indeks}">Kopiuj</button>
+        <div class="podglad-posta">
+          <div class="podglad-autor">
+            <div class="podglad-awatar">FDC</div>
+            <div>
+              <div class="podglad-nazwa">Forces DC</div>
+              <div class="podglad-podpis">Fit-out data center · Norwegia</div>
+            </div>
+          </div>
+          ${podgladZLiniaObciecia(wariant.tresc)}
+        </div>
+        <div class="wariant-stopka">
+          <button class="przycisk-drugorzedny" data-kopiuj-wariant="${indeks}">Kopiuj</button>
+        </div>
       </div>`
     )
     .join("");
@@ -334,16 +379,16 @@ function elementWynikuPosta(post, sciezkaPliku) {
       ${kartyWariantow}
       <details class="karta">
         <summary><strong>Wersja na Facebooka</strong> <span class="szczegoly">(${post.facebook.length} znaków)</span></summary>
-        <pre class="monospace" style="white-space:pre-wrap">${escapeHtml(post.facebook)}</pre>
+        <p class="podglad-tresc" style="margin:0.5rem 0">${escapeHtml(post.facebook)}</p>
         <button class="przycisk-drugorzedny" data-kopiuj-facebook>Kopiuj</button>
       </details>
       <div class="karta">
         <strong>Brief graficzny</strong>
-        <pre class="monospace" style="white-space:pre-wrap;margin:0.5rem 0">${escapeHtml(post.brief_graficzny)}</pre>
+        <p class="podglad-tresc" style="margin:0.5rem 0">${prostyMarkdown(post.brief_graficzny)}</p>
         <button class="przycisk-drugorzedny" data-kopiuj-brief>Kopiuj dla Sikory</button>
       </div>
-      <div class="karta" style="border-color:var(--ostrzezenie)">
-        <h3 style="margin-top:0;color:var(--ostrzezenie)">Braki</h3>
+      <div class="karta karta-ostrzegawcza">
+        <h3 style="color:var(--ostrzezenie)">Braki</h3>
         ${brakiHtml}
       </div>
       ${niekompletnyHtml}
@@ -896,7 +941,7 @@ function rysujKorpus() {
   const bezTypu = stanKorpusu.posty.filter((post) => post.wymaga_oznaczenia).length;
 
   const ostrzezeniaHtml = stanKorpusu.ostrzezenia.length
-    ? `<div class="karta" style="border-color:var(--ostrzezenie)">
+    ? `<div class="karta karta-ostrzegawcza">
         <strong>Pliki, których nie udało się odczytać</strong>
         <ul>${stanKorpusu.ostrzezenia.map((o) => `<li>${escapeHtml(o)}</li>`).join("")}</ul>
        </div>`
@@ -919,7 +964,7 @@ function rysujKorpus() {
     </div>
     ${ostrzezeniaHtml}
     <div class="karta">
-      <div style="display:flex;gap:1rem;align-items:center;flex-wrap:wrap">
+      <div class="pasek-narzedzi" style="margin-bottom:0">
         <label>Rodzaj:
           <select id="filtr-typu"><option value="">wszystkie</option>${opcjeTypow(filtrTypu)}</select>
         </label>
@@ -1179,7 +1224,7 @@ async function renderujPlan() {
   }
 
   const wyborMiesiaca = `
-    <div style="display:flex;gap:0.75rem;align-items:center;margin-bottom:1rem">
+    <div class="pasek-narzedzi">
       <label>Miesiąc: <input type="month" id="miesiac-planu" value="${miesiacPlanu}"></label>
     </div>
   `;
@@ -1237,8 +1282,8 @@ function widokPustegoPlanu(dane) {
 function widokPlanu(dane) {
   const plan = dane.plan;
   const brakiHtml = plan.czego_zabraklo.length
-    ? `<div class="karta" style="border-color:var(--ostrzezenie)">
-         <h3 style="margin-top:0;color:var(--ostrzezenie)">Czego zabrakło</h3>
+    ? `<div class="karta karta-ostrzegawcza">
+         <h3 style="color:var(--ostrzezenie)">Czego zabrakło</h3>
          <ul>${plan.czego_zabraklo.map((b) => `<li>${escapeHtml(b)}</li>`).join("")}</ul>
          <button class="przycisk-drugorzedny" id="przejdz-do-materialow">Uzupełnij materiały</button>
        </div>`
@@ -1399,8 +1444,8 @@ async function renderujMaterialy() {
   stanMaterialow = dane.materialy;
 
   const blokPusty = dane.puste
-    ? `<div class="karta" style="border-color:var(--ostrzezenie)">
-         <h3 style="margin-top:0;color:var(--ostrzezenie)">Ten miesiąc jest pusty</h3>
+    ? `<div class="karta karta-ostrzegawcza">
+         <h3 style="color:var(--ostrzezenie)">Ten miesiąc jest pusty</h3>
          <p>
            Plan contentu oparty wyłącznie na newsach z branży będzie nieodróżnialny
            od konkurencji. Wyróżnia Was to, co realnie dzieje się na budowach.
@@ -1443,7 +1488,7 @@ async function renderujMaterialy() {
 
   OBSZAR.innerHTML = `
     <h2>Materiały</h2>
-    <div style="display:flex;gap:0.75rem;align-items:center;margin-bottom:1rem">
+    <div class="pasek-narzedzi">
       <label>Miesiąc: <input type="month" id="miesiac-materialow" value="${miesiacMaterialow}"></label>
       <button class="przycisk-drugorzedny" id="przycisk-prosba">Wyślij prośbę o materiały</button>
     </div>
@@ -1555,6 +1600,14 @@ function przejdzDoZakladki(nazwa) {
 
 document.querySelectorAll("[data-zakladka]").forEach((el) => {
   el.addEventListener("click", () => przejdzDoZakladki(el.dataset.zakladka));
+});
+
+// Bez tego przycisk „wstecz" w przeglądarce zmieniał adres, ale ekran
+// zostawał poprzedni — wyglądało to jak zawieszenie aplikacji.
+window.addEventListener("hashchange", () => {
+  const zZadresu = window.location.hash.replace("#", "") || "asystent";
+  const aktywna = document.querySelector("[data-zakladka].aktywna");
+  if (aktywna?.dataset.zakladka !== zZadresu) przejdzDoZakladki(zZadresu);
 });
 
 const poczatkowaZakladka = window.location.hash.replace("#", "") || "asystent";
