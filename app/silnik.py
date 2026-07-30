@@ -239,6 +239,51 @@ PROMPT_REDAKTOR = (
     "się od '- ', albo dokładnie 'Brak braków.' jeśli niczego nie brakuje>\n"
 )
 
+PROMPT_STRATEG = (
+    "Jesteś strategiem contentu dla Forces DC Content Studio (fit-out data "
+    "center, Norwegia). Budujesz plan postów na wskazany miesiąc. "
+    f"{GRANICA_NDA} {ZAKAZ_TRESCI_PRAWNYCH}\n\n"
+    "Przebieg (SPEC 8.1):\n"
+    "1. Przeczytaj baza-wiedzy/zrodla-branzowe.md — to lista źródeł, z których "
+    "masz korzystać, wraz z kalendarzem wydarzeń i tematami, które regularnie "
+    "generują newsy.\n"
+    "2. Użyj podagenta `researcher` (narzędzie Agent, subagent_type="
+    "'researcher'), żeby zebrać wydarzenia z branży data center w Norwegii "
+    "z ostatnich ~30 dni oraz zbliżające się wydarzenia branżowe.\n"
+    "3. Przeczytaj materiały z firmy: input-firmowy/ dla wskazanego miesiąca "
+    "ORAZ dla miesiąca poprzedniego.\n"
+    "4. Przejrzyj korpus/linkedin/ i wyklucz tematy poruszane w ostatnich "
+    "60 dniach, żeby plan się nie powtarzał.\n"
+    "5. Zbuduj plan zgodnie z proporcją typów opisaną w zasadach planowania "
+    "(.claude/skills/strategia-contentu). Jeśli ten plik jest placeholderem "
+    "bez konkretnych proporcji, napisz to wprost w sekcji „Czego zabrakło”.\n\n"
+    "ZACHOWANIE KRYTYCZNE — najważniejsza reguła tego trybu:\n"
+    "Jeśli materiały z firmy (input-firmowy) są puste albo ubogie, NIE "
+    "uzupełniaj planu tematami branżowymi do pełnej liczby pozycji. Zwróć "
+    "plan KRÓTSZY i wypisz w sekcji „Czego zabrakło”, czego konkretnie "
+    "brakowało i o co trzeba dopytać w firmie. Content oparty wyłącznie na "
+    "newsach branżowych jest nieodróżnialny od konkurencji — to zdiagnozowany "
+    "problem tego klienta, nie hipoteza. Krótszy, ale konkretny plan jest "
+    "poprawnym wynikiem; rozdmuchany plan z samych newsów jest błędem.\n\n"
+    "Zapisz wynik narzędziem Write pod ścieżką WZGLĘDNĄ `plan/RRRR-MM.md` "
+    "(dla wskazanego miesiąca). WAŻNE: podaj dokładnie taką względną ścieżkę, "
+    "zaczynającą się od 'plan/' — bez ścieżki bezwzględnej, Twój katalog "
+    "roboczy już wskazuje właściwe miejsce. Użyj DOKŁADNIE tej struktury, "
+    "bo inny program parsuje ten plik:\n\n"
+    "# Plan na RRRR-MM\n\n"
+    "| # | Data | Typ | Temat | Źródło | Do potwierdzenia | Status |\n"
+    "|---|---|---|---|---|---|---|\n"
+    "| 1 | RRRR-MM-DD | <typ z listy> | <temat> | <źródło lub materiały z firmy> "
+    "| <czego brakuje, puste jeśli nic> | szkic |\n\n"
+    "## Czego zabrakło\n\n"
+    "<lista punktowana, każdy punkt od '- ', albo dokładnie 'Brak uwag.'>\n\n"
+    "Dozwolone wartości kolumny Typ: branzowy, realizacja, zajawka-eventu, "
+    "prelegent, partner, employer-branding, ekspercki, event-relacja, "
+    "obecnosc-branzowa, podsumowanie, okolicznosciowy. "
+    "W kolumnie Status wpisuj zawsze 'szkic'. W treści tabeli nie używaj "
+    "znaku '|' — rozbija kolumny."
+)
+
 # Nazwa narzędzia MCP tak, jak zobaczy ją model i jak trafia do allowed_tools/
 # ToolUseBlock.name — konwencja `mcp__<serwer>__<narzędzie>` (ta sama, którą
 # widać w nazwach narzędzi MCP używanych w tej rozmowie, np. `mcp__github__*`;
@@ -460,5 +505,29 @@ async def uruchom_asystenta(katalog_danych: Path, wiadomosc: str) -> AsyncIterat
     )
     async for zdarzenie in _przetworz_zapytanie(
         opcje, wiadomosc, narzedzie_propozycji=NAZWA_NARZEDZIA_PROPOZYCJI
+    ):
+        yield zdarzenie
+
+
+async def uruchom_stratega(
+    katalog_danych: Path, miesiac: str, uwagi: str = ""
+) -> AsyncIterator[dict[str, Any]]:
+    """Tryb Strateg (SPEC 8.1): buduje plan contentu na miesiąc i zapisuje
+    go do plan/RRRR-MM.md."""
+    opcje = zbuduj_opcje(
+        katalog_danych,
+        PROMPT_STRATEG,
+        agents={"researcher": SUBAGENT_RESEARCHER},
+    )
+    tresc_polecenia = (
+        f"Dzisiejsza data: {date.today().isoformat()}.\n"
+        f"Zbuduj plan na miesiąc: {miesiac}.\n"
+    )
+    if uwagi.strip():
+        tresc_polecenia += f"\nUwagi od operatora:\n{uwagi.strip()}\n"
+
+    yield {"typ": "status", "tekst": "Czytam źródła branżowe i materiały z firmy…"}
+    async for zdarzenie in _przetworz_zapytanie(
+        opcje, tresc_polecenia, obserwuj_zapis_z_prefiksem="plan/"
     ):
         yield zdarzenie

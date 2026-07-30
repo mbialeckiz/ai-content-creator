@@ -161,6 +161,10 @@ function uruchomTestSilnika() {
 let licznikWynikowPostow = 0;
 const wynikiPostow = {};
 
+// Ustawiane przez przycisk „Napisz" w planie — ekran Posty otwiera się
+// z wypełnionym briefem (SPEC-frontend 6).
+let briefZPlanu = "";
+
 function renderujPosty() {
   OBSZAR.innerHTML = `
     <h2>Posty</h2>
@@ -185,6 +189,11 @@ function renderujPosty() {
     <div id="wynik-redaktora"></div>
   `;
   document.getElementById("przycisk-generuj").addEventListener("click", uruchomRedaktora);
+
+  if (briefZPlanu) {
+    document.getElementById("pole-briefu").value = briefZPlanu;
+    briefZPlanu = "";
+  }
 }
 
 function elementBlokadyNda(fraza) {
@@ -1036,6 +1045,395 @@ async function wykonajImport() {
   }
 }
 
+// --- Wspólne: wybór miesiąca ---
+
+function biezacyMiesiac() {
+  return new Date().toISOString().slice(0, 7);
+}
+
+function nastepnyMiesiac() {
+  const teraz = new Date();
+  return new Date(teraz.getFullYear(), teraz.getMonth() + 1, 1).toISOString().slice(0, 7);
+}
+
+const NAZWY_MIESIECY = [
+  "styczeń", "luty", "marzec", "kwiecień", "maj", "czerwiec",
+  "lipiec", "sierpień", "wrzesień", "październik", "listopad", "grudzień",
+];
+
+function nazwaMiesiaca(miesiac) {
+  const [rok, numer] = miesiac.split("-");
+  return `${NAZWY_MIESIECY[Number(numer) - 1]} ${rok}`;
+}
+
+// --- Ekran "Plan" (tryb Strateg, SPEC 8.1 / SPEC-frontend 6) ---
+
+let miesiacPlanu = nastepnyMiesiac();
+
+async function renderujPlan() {
+  OBSZAR.innerHTML = `<h2>Plan</h2><div class="karta"><p class="placeholder">Wczytuję…</p></div>`;
+  let dane;
+  try {
+    const odpowiedz = await fetch(`/api/plan/${miesiacPlanu}`);
+    if (!odpowiedz.ok) throw new Error(`HTTP ${odpowiedz.status}`);
+    dane = await odpowiedz.json();
+  } catch (blad) {
+    OBSZAR.innerHTML = `<h2>Plan</h2><div class="karta"><p class="instrukcja-naprawy">Nie udało się wczytać planu (${escapeHtml(blad.message)}). Sprawdź, czy serwer aplikacji nadal działa, i odśwież stronę.</p></div>`;
+    return;
+  }
+
+  const wyborMiesiaca = `
+    <div style="display:flex;gap:0.75rem;align-items:center;margin-bottom:1rem">
+      <label>Miesiąc: <input type="month" id="miesiac-planu" value="${miesiacPlanu}"></label>
+    </div>
+  `;
+
+  OBSZAR.innerHTML = `<h2>Plan</h2>${wyborMiesiaca}<div id="tresc-planu"></div>`;
+  document.getElementById("miesiac-planu").addEventListener("change", (zdarzenie) => {
+    miesiacPlanu = zdarzenie.target.value;
+    renderujPlan();
+  });
+
+  const kontener = document.getElementById("tresc-planu");
+  kontener.innerHTML = dane.plan.istnieje ? widokPlanu(dane) : widokPustegoPlanu(dane);
+  podepnijAkcjePlanu(dane);
+}
+
+function widokPustegoPlanu(dane) {
+  const w = dane.warunki;
+  const znacznik = (spelniony) => (spelniony ? "✓" : "✗");
+  const klasa = (spelniony) => (spelniony ? "warunek-ok" : "warunek-brak");
+
+  const zrodlaOk = w.zrodla_luki === 0;
+  const korpusOk = w.korpus > 0;
+  const materialyOk = !w.materialy_puste;
+
+  return `
+    <div class="karta">
+      <p>Nie ma jeszcze planu na <strong>${escapeHtml(nazwaMiesiaca(miesiacPlanu))}</strong>.</p>
+      <button class="przycisk-glowny" id="przycisk-zbuduj-plan">Zbuduj plan na ${escapeHtml(nazwaMiesiaca(miesiacPlanu))}</button>
+      <div style="margin-top:1rem">
+        <strong>Przed zbudowaniem planu:</strong>
+        <ul class="lista-warunkow">
+          <li class="${klasa(korpusOk)}">${znacznik(korpusOk)} Korpus — ${w.korpus} ${w.korpus === 1 ? "post" : "postów"} (docelowo ${w.korpus_docelowo})</li>
+          <li class="${klasa(zrodlaOk)}">${znacznik(zrodlaOk)} Źródła branżowe — ${zrodlaOk ? "gotowe" : `${w.zrodla_luki} do uzupełnienia`}</li>
+          <li class="${klasa(materialyOk)}">${znacznik(materialyOk)} Materiały z firmy na ${escapeHtml(nazwaMiesiaca(miesiacPlanu))} — ${materialyOk ? "są" : "puste"}</li>
+        </ul>
+        ${
+          materialyOk
+            ? ""
+            : `<div class="ostrzezenie-koszt">
+                 Bez materiałów z firmy plan będzie krótszy — asystent nie dopycha go
+                 newsami z branży, bo taki content nie odróżnia Was od konkurencji.
+                 <button class="przycisk-drugorzedny" id="przejdz-do-materialow" style="margin-left:0.5rem">Uzupełnij materiały</button>
+               </div>`
+        }
+      </div>
+      <label style="display:block;margin-top:0.75rem">
+        Uwagi dla asystenta (opcjonalne)
+        <textarea id="uwagi-planu" class="monospace" rows="2" style="width:100%;margin-top:0.25rem" placeholder="np. w tym miesiącu kładziemy nacisk na rekrutację"></textarea>
+      </label>
+      <div class="log-przebiegu" id="log-planu" hidden></div>
+    </div>
+  `;
+}
+
+function widokPlanu(dane) {
+  const plan = dane.plan;
+  const brakiHtml = plan.czego_zabraklo.length
+    ? `<div class="karta" style="border-color:var(--ostrzezenie)">
+         <h3 style="margin-top:0;color:var(--ostrzezenie)">Czego zabrakło</h3>
+         <ul>${plan.czego_zabraklo.map((b) => `<li>${escapeHtml(b)}</li>`).join("")}</ul>
+         <button class="przycisk-drugorzedny" id="przejdz-do-materialow">Uzupełnij materiały</button>
+       </div>`
+    : "";
+
+  const wiersze = plan.pozycje
+    .map(
+      (pozycja, indeks) => `
+      <tr class="${pozycja.do_potwierdzenia ? "wymaga-oznaczenia" : ""}">
+        <td>${escapeHtml(pozycja.data)}</td>
+        <td>${escapeHtml(pozycja.typ)}</td>
+        <td>${escapeHtml(pozycja.temat)}</td>
+        <td class="szczegoly">${escapeHtml(pozycja.zrodlo)}</td>
+        <td class="szczegoly">${escapeHtml(pozycja.do_potwierdzenia)}</td>
+        <td>
+          <select data-status-dla="${indeks}" class="status-${escapeHtml(pozycja.status)}">
+            ${dane.statusy.map((s) => `<option value="${s}"${s === pozycja.status ? " selected" : ""}>${s}</option>`).join("")}
+          </select>
+        </td>
+        <td><button class="przycisk-drugorzedny" data-napisz="${indeks}">Napisz</button></td>
+      </tr>`
+    )
+    .join("");
+
+  return `
+    ${brakiHtml}
+    <div class="karta">
+      <table class="tabela-korpusu">
+        <thead><tr><th>Data</th><th>Typ</th><th>Temat</th><th>Źródło</th><th>Do potwierdzenia</th><th>Status</th><th></th></tr></thead>
+        <tbody>${wiersze}</tbody>
+      </table>
+      <div style="margin-top:0.75rem">
+        <button class="przycisk-drugorzedny" id="przycisk-zbuduj-plan">Zbuduj plan od nowa</button>
+        <span class="szczegoly">Nadpisze obecny plan na ten miesiąc.</span>
+      </div>
+      <textarea id="uwagi-planu" hidden></textarea>
+      <div class="log-przebiegu" id="log-planu" hidden></div>
+    </div>
+  `;
+}
+
+function podepnijAkcjePlanu(dane) {
+  const przejdz = document.getElementById("przejdz-do-materialow");
+  if (przejdz) {
+    przejdz.addEventListener("click", () => {
+      miesiacMaterialow = miesiacPlanu;
+      przejdzDoZakladki("materialy");
+    });
+  }
+
+  const zbuduj = document.getElementById("przycisk-zbuduj-plan");
+  if (zbuduj) zbuduj.addEventListener("click", zbudujPlan);
+
+  document.querySelectorAll("[data-status-dla]").forEach((wybor) => {
+    wybor.addEventListener("change", async () => {
+      const odpowiedz = await fetch(`/api/plan/${miesiacPlanu}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ numer_wiersza: Number(wybor.dataset.statusDla), status: wybor.value }),
+      });
+      if (!odpowiedz.ok) {
+        const blad = await odpowiedz.json();
+        alert(blad.blad || "Nie udało się zapisać statusu.");
+      }
+      renderujPlan();
+    });
+  });
+
+  document.querySelectorAll("[data-napisz]").forEach((przycisk) => {
+    przycisk.addEventListener("click", () => {
+      const pozycja = dane.plan.pozycje[Number(przycisk.dataset.napisz)];
+      briefZPlanu = [
+        `Temat: ${pozycja.temat}`,
+        pozycja.typ ? `Rodzaj posta: ${pozycja.typ}` : "",
+        pozycja.zrodlo ? `Źródło: ${pozycja.zrodlo}` : "",
+        pozycja.do_potwierdzenia ? `Do potwierdzenia: ${pozycja.do_potwierdzenia}` : "",
+      ]
+        .filter(Boolean)
+        .join("\n");
+      przejdzDoZakladki("posty");
+    });
+  });
+}
+
+async function zbudujPlan() {
+  const przycisk = document.getElementById("przycisk-zbuduj-plan");
+  const log = document.getElementById("log-planu");
+  const uwagi = document.getElementById("uwagi-planu").value;
+  przycisk.disabled = true;
+  przycisk.textContent = "Buduję plan…";
+  log.hidden = false;
+  log.innerHTML = "";
+
+  const dopiszWpis = (tekst, klasa = "") => {
+    const wpis = document.createElement("div");
+    wpis.className = `wpis ${klasa}`;
+    wpis.textContent = tekst;
+    log.appendChild(wpis);
+    log.scrollTop = log.scrollHeight;
+  };
+
+  let odpowiedz;
+  try {
+    odpowiedz = await fetch("/api/plan", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ miesiac: miesiacPlanu, uwagi }),
+    });
+  } catch (blad) {
+    dopiszWpis(`Nie udało się połączyć z serwerem (${blad.message}).`, "blad");
+    przycisk.disabled = false;
+    return;
+  }
+
+  if ((odpowiedz.headers.get("content-type") || "").includes("application/json")) {
+    const dane = await odpowiedz.json();
+    document.getElementById("tresc-planu").innerHTML = dane.zablokowane_nda
+      ? elementBlokadyNda(dane.fraza)
+      : `<div class="karta"><p class="instrukcja-naprawy">${escapeHtml(dane.blad || "Nie udało się zbudować planu.")}</p></div>`;
+    return;
+  }
+
+  await strumieniujSSE(odpowiedz, (zdarzenie) => {
+    if (zdarzenie.typ === "status" || zdarzenie.typ === "fragment") {
+      dopiszWpis(zdarzenie.tekst);
+    } else if (zdarzenie.typ === "wynik") {
+      if (zdarzenie.bledny) {
+        dopiszWpis("Budowanie planu zakończyło się błędem.", "blad");
+        przycisk.disabled = false;
+      } else {
+        renderujPlan();
+      }
+    } else if (zdarzenie.typ === "blad") {
+      dopiszWpis(zdarzenie.tekst, "blad");
+      przycisk.disabled = false;
+    }
+  });
+}
+
+// --- Ekran "Materiały" (input firmowy, SPEC-frontend 8) ---
+
+let miesiacMaterialow = biezacyMiesiac();
+let stanMaterialow = {};
+
+async function renderujMaterialy() {
+  OBSZAR.innerHTML = `<h2>Materiały</h2><div class="karta"><p class="placeholder">Wczytuję…</p></div>`;
+  let dane;
+  try {
+    const odpowiedz = await fetch(`/api/materialy/${miesiacMaterialow}`);
+    if (!odpowiedz.ok) throw new Error(`HTTP ${odpowiedz.status}`);
+    dane = await odpowiedz.json();
+  } catch (blad) {
+    OBSZAR.innerHTML = `<h2>Materiały</h2><div class="karta"><p class="instrukcja-naprawy">Nie udało się wczytać materiałów (${escapeHtml(blad.message)}). Sprawdź, czy serwer aplikacji nadal działa, i odśwież stronę.</p></div>`;
+    return;
+  }
+
+  stanMaterialow = dane.materialy;
+
+  const blokPusty = dane.puste
+    ? `<div class="karta" style="border-color:var(--ostrzezenie)">
+         <h3 style="margin-top:0;color:var(--ostrzezenie)">Ten miesiąc jest pusty</h3>
+         <p>
+           Plan contentu oparty wyłącznie na newsach z branży będzie nieodróżnialny
+           od konkurencji. Wyróżnia Was to, co realnie dzieje się na budowach.
+         </p>
+         <p><strong>Jedno zdanie wystarczy.</strong></p>
+       </div>`
+    : "";
+
+  const bloki = dane.sekcje
+    .map((sekcja, indeks) => {
+      const wpisy = stanMaterialow[sekcja] || [];
+      const listaWpisow = wpisy.length
+        ? wpisy
+            .map(
+              (wpis, i) => `
+              <li>
+                <span>${escapeHtml(wpis)}</span>
+                <button class="przycisk-drugorzedny maly" data-usun-wpis="${indeks}:${i}">usuń</button>
+              </li>`
+            )
+            .join("")
+        : `<li class="placeholder">(pusto)</li>`;
+      return `
+        <div class="karta">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <strong>${escapeHtml(sekcja)}</strong>
+            <button class="przycisk-drugorzedny" data-dodaj-wpis="${indeks}">+ Dodaj</button>
+          </div>
+          <ul class="lista-materialow">${listaWpisow}</ul>
+          <div data-formularz-dla="${indeks}" hidden style="margin-top:0.5rem">
+            <input type="text" class="pole-wpisu" style="width:100%" placeholder="Jedno zdanie wystarczy…">
+            <div style="margin-top:0.35rem">
+              <button class="przycisk-glowny" data-zapisz-wpis="${indeks}">Dodaj</button>
+              <button class="przycisk-drugorzedny" data-anuluj-wpis="${indeks}">Anuluj</button>
+            </div>
+          </div>
+        </div>`;
+    })
+    .join("");
+
+  OBSZAR.innerHTML = `
+    <h2>Materiały</h2>
+    <div style="display:flex;gap:0.75rem;align-items:center;margin-bottom:1rem">
+      <label>Miesiąc: <input type="month" id="miesiac-materialow" value="${miesiacMaterialow}"></label>
+      <button class="przycisk-drugorzedny" id="przycisk-prosba">Wyślij prośbę o materiały</button>
+    </div>
+    ${blokPusty}
+    <div id="prosba-o-materialy"></div>
+    ${bloki}
+  `;
+
+  document.getElementById("miesiac-materialow").addEventListener("change", (zdarzenie) => {
+    miesiacMaterialow = zdarzenie.target.value;
+    renderujMaterialy();
+  });
+  document.getElementById("przycisk-prosba").addEventListener("click", pokazProsbeOMaterialy);
+
+  OBSZAR.querySelectorAll("[data-dodaj-wpis]").forEach((przycisk) => {
+    przycisk.addEventListener("click", () => {
+      const formularz = OBSZAR.querySelector(`[data-formularz-dla="${przycisk.dataset.dodajWpis}"]`);
+      formularz.hidden = false;
+      formularz.querySelector(".pole-wpisu").focus();
+    });
+  });
+  OBSZAR.querySelectorAll("[data-anuluj-wpis]").forEach((przycisk) => {
+    przycisk.addEventListener("click", () => {
+      OBSZAR.querySelector(`[data-formularz-dla="${przycisk.dataset.anulujWpis}"]`).hidden = true;
+    });
+  });
+  OBSZAR.querySelectorAll("[data-zapisz-wpis]").forEach((przycisk) => {
+    przycisk.addEventListener("click", () => dodajWpisMaterialow(przycisk.dataset.zapiszWpis, dane.sekcje));
+  });
+  OBSZAR.querySelectorAll("[data-usun-wpis]").forEach((przycisk) => {
+    przycisk.addEventListener("click", () => {
+      const [indeksSekcji, indeksWpisu] = przycisk.dataset.usunWpis.split(":").map(Number);
+      const sekcja = dane.sekcje[indeksSekcji];
+      stanMaterialow[sekcja].splice(indeksWpisu, 1);
+      zapiszMaterialy();
+    });
+  });
+}
+
+function dodajWpisMaterialow(indeksSekcji, sekcje) {
+  const formularz = OBSZAR.querySelector(`[data-formularz-dla="${indeksSekcji}"]`);
+  const tekst = formularz.querySelector(".pole-wpisu").value.trim();
+  if (!tekst) return;
+  const sekcja = sekcje[Number(indeksSekcji)];
+  stanMaterialow[sekcja] = [...(stanMaterialow[sekcja] || []), tekst];
+  zapiszMaterialy();
+}
+
+async function zapiszMaterialy() {
+  const odpowiedz = await fetch(`/api/materialy/${miesiacMaterialow}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ materialy: stanMaterialow }),
+  });
+  if (!odpowiedz.ok) {
+    const dane = await odpowiedz.json();
+    alert(dane.blad || "Nie udało się zapisać materiałów.");
+    return;
+  }
+  renderujMaterialy();
+}
+
+function pokazProsbeOMaterialy() {
+  const tekst =
+    `Cześć! Zbieram materiały do postów na ${nazwaMiesiaca(miesiacMaterialow)}.\n\n` +
+    "Dajcie znać, czy w tym miesiącu było coś z tych rzeczy:\n" +
+    "- start nowego projektu\n" +
+    "- zakończenie albo odbiór realizacji\n" +
+    "- kamień milowy, certyfikat, szkolenie\n" +
+    "- ktoś nowy w zespole albo awans\n" +
+    "- udział w wydarzeniu branżowym\n\n" +
+    "Jedno zdanie na punkt w zupełności wystarczy — resztę dopiszę sama. Dzięki!";
+
+  const kontener = document.getElementById("prosba-o-materialy");
+  kontener.innerHTML = `
+    <div class="karta">
+      <strong>Gotowa wiadomość do wysłania</strong>
+      <p class="szczegoly">Skopiuj i wyślij na WhatsAppie. Aplikacja niczego nie wysyła sama.</p>
+      <pre class="monospace" style="white-space:pre-wrap;margin:0.5rem 0">${escapeHtml(tekst)}</pre>
+      <button class="przycisk-drugorzedny" id="kopiuj-prosbe">Kopiuj</button>
+    </div>
+  `;
+  document.getElementById("kopiuj-prosbe").addEventListener("click", (zdarzenie) =>
+    kopiujDoSchowka(tekst, zdarzenie.target)
+  );
+}
+
 function przejdzDoZakladki(nazwa) {
   ustawAktywnaZakladke(nazwa);
   window.location.hash = nazwa;
@@ -1049,6 +1447,10 @@ function przejdzDoZakladki(nazwa) {
     renderujStyl();
   } else if (nazwa === "korpus") {
     renderujKorpus();
+  } else if (nazwa === "plan") {
+    renderujPlan();
+  } else if (nazwa === "materialy") {
+    renderujMaterialy();
   } else {
     renderujPlaceholder(nazwa);
   }

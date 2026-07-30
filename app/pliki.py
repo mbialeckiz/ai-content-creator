@@ -209,3 +209,202 @@ def wczytaj_wygenerowany_post(sciezka: Path) -> WygenerowanyPost:
     post.braki = _rozbierz_braki(sekcje.get("Braki", ""))
     post.kompletny = all(naglowek in sekcje for naglowek in NAGLOWKI_POSTA)
     return post
+
+
+# --- Plan miesiąca (SPEC 7 i 8.1, SPEC-frontend 6) ---
+
+NAGLOWEK_CZEGO_ZABRAKLO = "Czego zabrakło"
+
+# SPEC sekcja 7 podaje statusy jako `draft` → `zatwierdzony` → `napisany` →
+# `opublikowany`, a SPEC-frontend sekcja 6 ten sam pierwszy status nazywa
+# `szkic`. Rozbieżność w dokumentach; zapisujemy polskie `szkic` (spójnie
+# z resztą interfejsu i z tym, że operatorka edytuje te pliki ręcznie),
+# ale przy odczycie przyjmujemy też `draft`, żeby plan napisany według
+# litery SPEC sekcja 7 nie wyświetlał się z pustym statusem.
+STATUSY_PLANU = ("szkic", "zatwierdzony", "napisany", "opublikowany")
+SYNONIMY_STATUSOW = {"draft": "szkic"}
+
+KOLUMNY_PLANU = ("#", "Data", "Typ", "Temat", "Źródło", "Do potwierdzenia", "Status")
+
+
+@dataclass
+class PozycjaPlanu:
+    numer: str = ""
+    data: str = ""
+    typ: str = ""
+    temat: str = ""
+    zrodlo: str = ""
+    do_potwierdzenia: str = ""
+    status: str = "szkic"
+
+
+@dataclass
+class PlanMiesiaca:
+    miesiac: str
+    istnieje: bool = False
+    pozycje: list[PozycjaPlanu] = field(default_factory=list)
+    czego_zabraklo: list[str] = field(default_factory=list)
+    surowy_markdown: str = ""
+
+
+def _sciezka_planu(katalog_danych: Path, miesiac: str) -> Path:
+    return katalog_danych / "plan" / f"{Path(miesiac).name}.md"
+
+
+def _komorki_wiersza(linia: str) -> list[str]:
+    return [komorka.strip() for komorka in linia.strip().strip("|").split("|")]
+
+
+def _czy_linia_rozdzielajaca(linia: str) -> bool:
+    return bool(re.fullmatch(r"[\s|:-]+", linia.strip()))
+
+
+def wczytaj_plan(katalog_danych: Path, miesiac: str) -> PlanMiesiaca:
+    """Parsuje plan miesiąca z tabeli markdown. Nieznane kolumny są pomijane,
+    brakujące zostają puste — operatorka edytuje ten plik ręcznie, więc
+    parser ma być wyrozumiały, a nie odrzucać cały plan przez jedną literówkę."""
+    plan = PlanMiesiaca(miesiac=miesiac)
+    plik = _sciezka_planu(katalog_danych, miesiac)
+    if not plik.is_file():
+        return plan
+
+    tresc = plik.read_text(encoding="utf-8")
+    plan.istnieje = True
+    plan.surowy_markdown = tresc
+
+    sekcje = _wytnij_sekcje(tresc)
+    plan.czego_zabraklo = _rozbierz_braki(sekcje.get(NAGLOWEK_CZEGO_ZABRAKLO, ""))
+
+    # Tabela jest przed pierwszym nagłówkiem `## `, więc bierzemy tekst do niego.
+    czesc_z_tabela = re.split(r"^## ", tresc, maxsplit=1, flags=re.MULTILINE)[0]
+    naglowki: list[str] = []
+    for linia in czesc_z_tabela.splitlines():
+        if "|" not in linia:
+            continue
+        if _czy_linia_rozdzielajaca(linia):
+            continue
+        komorki = _komorki_wiersza(linia)
+        if not naglowki:
+            naglowki = komorki
+            continue
+        wiersz = dict(zip(naglowki, komorki))
+        status = wiersz.get("Status", "").strip().lower()
+        plan.pozycje.append(
+            PozycjaPlanu(
+                numer=wiersz.get("#", ""),
+                data=wiersz.get("Data", ""),
+                typ=wiersz.get("Typ", ""),
+                temat=wiersz.get("Temat", ""),
+                zrodlo=wiersz.get("Źródło", ""),
+                do_potwierdzenia=wiersz.get("Do potwierdzenia", ""),
+                status=SYNONIMY_STATUSOW.get(status, status) or "szkic",
+            )
+        )
+    return plan
+
+
+def _plan_jako_markdown(plan: PlanMiesiaca) -> str:
+    naglowek = "| " + " | ".join(KOLUMNY_PLANU) + " |"
+    rozdzielacz = "|" + "|".join(["---"] * len(KOLUMNY_PLANU)) + "|"
+    wiersze = [
+        "| "
+        + " | ".join(
+            (
+                pozycja.numer or str(indeks),
+                pozycja.data,
+                pozycja.typ,
+                pozycja.temat,
+                pozycja.zrodlo,
+                pozycja.do_potwierdzenia,
+                pozycja.status,
+            )
+        )
+        + " |"
+        for indeks, pozycja in enumerate(plan.pozycje, start=1)
+    ]
+    braki = "\n".join(f"- {brak}" for brak in plan.czego_zabraklo) or "Brak uwag."
+    return (
+        f"# Plan na {plan.miesiac}\n\n"
+        + "\n".join([naglowek, rozdzielacz, *wiersze])
+        + f"\n\n## {NAGLOWEK_CZEGO_ZABRAKLO}\n\n{braki}\n"
+    )
+
+
+def zmien_status_pozycji(
+    katalog_danych: Path, miesiac: str, numer_wiersza: int, status: str
+) -> None:
+    """Zmienia status jednej pozycji planu i przepisuje plik.
+
+    Przepisujemy całą tabelę, a nie podmieniamy tekst w miejscu: plan bywa
+    edytowany ręcznie i formatowanie tabeli po takiej edycji nie musi być
+    regularne, więc podmiana tekstem trafiałaby czasem w zły wiersz.
+    """
+    if status not in STATUSY_PLANU:
+        raise ValueError(f"Nieznany status planu: {status}")
+
+    plan = wczytaj_plan(katalog_danych, miesiac)
+    if not plan.istnieje:
+        raise FileNotFoundError(f"Nie ma planu na {miesiac}.")
+    if not 0 <= numer_wiersza < len(plan.pozycje):
+        raise IndexError(f"Plan na {miesiac} nie ma pozycji numer {numer_wiersza + 1}.")
+
+    plan.pozycje[numer_wiersza].status = status
+    _sciezka_planu(katalog_danych, miesiac).write_text(
+        _plan_jako_markdown(plan), encoding="utf-8"
+    )
+
+
+def lista_miesiecy_planow(katalog_danych: Path) -> list[str]:
+    katalog = katalog_danych / "plan"
+    if not katalog.is_dir():
+        return []
+    return sorted((plik.stem for plik in katalog.glob("*.md")), reverse=True)
+
+
+# --- Materiały z firmy (input firmowy, SPEC-frontend 8) ---
+
+SEKCJE_MATERIALOW = (
+    "Projekty — start",
+    "Projekty — zakończenie / odbiór",
+    "Kamienie milowe, certyfikaty",
+    "Ludzie — zatrudnienia, awanse",
+    "Obecność branżowa",
+)
+
+
+def _sciezka_materialow(katalog_danych: Path, miesiac: str) -> Path:
+    return katalog_danych / "input-firmowy" / f"{Path(miesiac).name}.md"
+
+
+def wczytaj_materialy(katalog_danych: Path, miesiac: str) -> dict[str, list[str]]:
+    """Materiały z firmy na dany miesiąc, jako sekcja → lista wpisów.
+    Zawsze zwraca wszystkie sekcje (puste, jeśli brak) — pusty miesiąc ma się
+    pokazać jako wyróżniony brak, nie jako biała plama (SPEC-frontend 8)."""
+    plik = _sciezka_materialow(katalog_danych, miesiac)
+    sekcje = _wytnij_sekcje(plik.read_text(encoding="utf-8")) if plik.is_file() else {}
+    return {
+        nazwa: [
+            linia.strip().lstrip("-").strip()
+            for linia in sekcje.get(nazwa, "").splitlines()
+            if linia.strip().startswith("-")
+        ]
+        for nazwa in SEKCJE_MATERIALOW
+    }
+
+
+def zapisz_materialy(
+    katalog_danych: Path, miesiac: str, materialy: dict[str, list[str]]
+) -> None:
+    plik = _sciezka_materialow(katalog_danych, miesiac)
+    plik.parent.mkdir(parents=True, exist_ok=True)
+
+    czesci = [f"# Materiały z firmy — {Path(miesiac).name}\n"]
+    for nazwa in SEKCJE_MATERIALOW:
+        wpisy = materialy.get(nazwa) or []
+        tresc = "\n".join(f"- {wpis}" for wpis in wpisy if wpis.strip()) or "(pusto)"
+        czesci.append(f"## {nazwa}\n\n{tresc}\n")
+    plik.write_text("\n".join(czesci), encoding="utf-8")
+
+
+def czy_materialy_puste(materialy: dict[str, list[str]]) -> bool:
+    return not any(wpisy for wpisy in materialy.values())

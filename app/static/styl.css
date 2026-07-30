@@ -411,6 +411,88 @@ a:focus-visible,
   gap: 0.2rem;
 }
 
+/* --- Ekrany Plan i Materiały --- */
+
+.lista-warunkow {
+  list-style: none;
+  padding-left: 0;
+  margin: 0.5rem 0;
+}
+
+.lista-warunkow li {
+  padding: 0.2rem 0;
+}
+
+.warunek-ok {
+  color: var(--ok);
+}
+
+.warunek-brak {
+  color: var(--ostrzezenie);
+  font-weight: 600;
+}
+
+select.status-szkic {
+  color: var(--tekst-przygaszony);
+}
+
+select.status-zatwierdzony {
+  color: var(--akcent);
+}
+
+select.status-napisany {
+  color: var(--ostrzezenie);
+}
+
+select.status-opublikowany {
+  color: var(--ok);
+  font-weight: 600;
+}
+
+.lista-materialow {
+  list-style: none;
+  padding-left: 0;
+  margin: 0.5rem 0 0 0;
+}
+
+.lista-materialow li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.3rem 0;
+  border-bottom: 1px solid var(--linia);
+}
+
+.lista-materialow li:last-child {
+  border-bottom: none;
+}
+
+.przycisk-drugorzedny.maly {
+  padding: 0.2rem 0.5rem;
+  font-size: 0.8rem;
+}
+
+.pole-wpisu {
+  font-family: inherit;
+  font-size: 0.95rem;
+  padding: 0.45rem;
+  border: 1px solid var(--linia);
+  border-radius: 4px;
+  color: var(--tekst);
+  background: var(--tlo-panelu);
+}
+
+input[type="month"] {
+  font-family: inherit;
+  font-size: 0.95rem;
+  padding: 0.35rem;
+  border: 1px solid var(--linia);
+  border-radius: 4px;
+  color: var(--tekst);
+  background: var(--tlo-panelu);
+}
+
 .pola-formularza input,
 .pola-formularza select {
   font-family: inherit;

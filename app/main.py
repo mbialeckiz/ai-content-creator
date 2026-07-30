@@ -362,3 +362,118 @@ async def api_import_wykonaj(dane: PotwierdzenieImportu) -> JSONResponse:
             "odrzucone_krotkie": diagnostyka_importu.odrzucone_krotkie,
         }
     )
+
+
+# --- Ekran „Plan" (tryb Strateg, SPEC 8.1 / SPEC-frontend 6) ---
+
+
+def _poprzedni_miesiac(miesiac: str) -> str:
+    rok, numer = (int(czesc) for czesc in miesiac.split("-"))
+    return f"{rok - 1}-12" if numer == 1 else f"{rok}-{numer - 1:02d}"
+
+
+@app.get("/api/plan/{miesiac}")
+async def api_plan(miesiac: str) -> JSONResponse:
+    katalog = katalog_danych()
+    plan = pliki.wczytaj_plan(katalog, miesiac)
+    materialy = pliki.wczytaj_materialy(katalog, miesiac)
+    posty_korpusu, _ = korpus.wczytaj_korpus(katalog)
+
+    # Warunki wstępne pokazywane na pustym ekranie planu (SPEC-frontend 6):
+    # operator ma z góry widzieć konsekwencje braków, zanim kliknie „Zbuduj".
+    pliki_jakosci = {plik["id"]: plik for plik in pliki.lista_plikow_jakosci(katalog)}
+    zrodla = pliki_jakosci.get("zrodla-branzowe", {})
+    return JSONResponse(
+        {
+            "plan": dataclasses.asdict(plan),
+            "warunki": {
+                "korpus": len(posty_korpusu),
+                "korpus_docelowo": korpus.DOCELOWA_LICZBA_POSTOW,
+                "zrodla_luki": zrodla.get("luki", 0),
+                "materialy_puste": pliki.czy_materialy_puste(materialy),
+                "materialy_poprzedni_puste": pliki.czy_materialy_puste(
+                    pliki.wczytaj_materialy(katalog, _poprzedni_miesiac(miesiac))
+                ),
+            },
+            "statusy": list(pliki.STATUSY_PLANU),
+        }
+    )
+
+
+class PolecenieStratega(BaseModel):
+    miesiac: str
+    uwagi: str = ""
+
+
+async def _strumien_stratega(miesiac: str, uwagi: str) -> AsyncIterator[str]:
+    async for zdarzenie in silnik.uruchom_stratega(katalog_danych(), miesiac, uwagi):
+        if zdarzenie["typ"] == "wynik" and not zdarzenie["bledny"]:
+            zdarzenie["plan"] = dataclasses.asdict(
+                pliki.wczytaj_plan(katalog_danych(), miesiac)
+            )
+        yield _jako_sse(zdarzenie)
+
+
+@app.post("/api/plan", response_model=None)
+async def api_zbuduj_plan(polecenie: PolecenieStratega) -> JSONResponse | StreamingResponse:
+    blokada = _blokada_nda_lub_none(polecenie.uwagi)
+    if blokada:
+        return blokada
+    return StreamingResponse(
+        _strumien_stratega(polecenie.miesiac, polecenie.uwagi),
+        media_type="text/event-stream",
+    )
+
+
+class ZmianaStatusu(BaseModel):
+    numer_wiersza: int
+    status: str
+
+
+@app.patch("/api/plan/{miesiac}", response_model=None)
+async def api_zmien_status(miesiac: str, dane: ZmianaStatusu) -> JSONResponse:
+    try:
+        pliki.zmien_status_pozycji(katalog_danych(), miesiac, dane.numer_wiersza, dane.status)
+    except (ValueError, IndexError) as blad:
+        return JSONResponse({"blad": str(blad)}, status_code=400)
+    except FileNotFoundError as blad:
+        return JSONResponse({"blad": str(blad)}, status_code=404)
+    except OSError as blad:
+        logger.error("Nie udało się zapisać statusu w planie %s: %s", miesiac, blad)
+        return JSONResponse(
+            {"blad": "Nie udało się zapisać zmiany — sprawdź, czy folder danych jest dostępny."},
+            status_code=500,
+        )
+    return JSONResponse({"zapisano": True})
+
+
+# --- Ekran „Materiały" (input firmowy, SPEC-frontend 8) ---
+
+
+@app.get("/api/materialy/{miesiac}")
+async def api_materialy(miesiac: str) -> JSONResponse:
+    materialy = pliki.wczytaj_materialy(katalog_danych(), miesiac)
+    return JSONResponse(
+        {
+            "materialy": materialy,
+            "sekcje": list(pliki.SEKCJE_MATERIALOW),
+            "puste": pliki.czy_materialy_puste(materialy),
+        }
+    )
+
+
+class ZapisMaterialow(BaseModel):
+    materialy: dict[str, list[str]]
+
+
+@app.put("/api/materialy/{miesiac}", response_model=None)
+async def api_zapisz_materialy(miesiac: str, dane: ZapisMaterialow) -> JSONResponse:
+    try:
+        pliki.zapisz_materialy(katalog_danych(), miesiac, dane.materialy)
+    except OSError as blad:
+        logger.error("Nie udało się zapisać materiałów na %s: %s", miesiac, blad)
+        return JSONResponse(
+            {"blad": "Nie udało się zapisać materiałów — sprawdź, czy folder danych jest dostępny."},
+            status_code=500,
+        )
+    return JSONResponse({"zapisano": True})
