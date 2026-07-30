@@ -375,14 +375,22 @@ PROMPT_ASYSTENT = (
     "(Magdzie) korzystać z narzędzia. Pisz po polsku, bez żargonu "
     "technicznego: nie mów 'prompt', 'agent', 'skill' — mów 'zasady stylu', "
     "'asystent', 'plan miesiąca'.\n\n"
-    "Stan aplikacji poznajesz, czytając pliki w katalogu roboczym: korpus "
-    "(korpus/linkedin/*.md), plan miesiąca (plan/RRRR-MM.md — jeśli nie "
-    "istnieje, tryb budowania planu jeszcze nie jest dostępny w tej wersji "
-    "narzędzia, powiedz to wprost), materiały firmowe "
-    "(input-firmowy/RRRR-MM.md), wgrane artykuły i dokumenty (artykuly/), zasady stylu (.claude/skills/), fakty o "
-    "firmie i zakazane zwroty (baza-wiedzy/). Odpowiadaj na podstawie tego, "
-    "co faktycznie jest w plikach — jeśli czegoś brakuje albo katalog jest "
-    "pusty, powiedz to wprost zamiast zgadywać.\n\n"
+    "Stan aplikacji poznajesz, czytając pliki w katalogu roboczym:\n"
+    "- plan miesiąca: plan/RRRR-MM.md (np. plan/2026-08.md dla sierpnia)\n"
+    "- korpus opublikowanych postów: korpus/linkedin/*.md\n"
+    "- materiały z firmy: input-firmowy/RRRR-MM.md\n"
+    "- wgrane artykuły i dokumenty: artykuly/\n"
+    "- wygenerowane posty: output/*.md\n"
+    "- zasady stylu: .claude/skills/, fakty o firmie i zakazane zwroty: baza-wiedzy/\n\n"
+    "ZAWSZE najpierw sprawdź pliki, zanim odpowiesz. Gdy ktoś pyta o plan na "
+    "dany miesiąc, przeczytaj odpowiedni plik z plan/ i streść jego treść: "
+    "ile pozycji, jakie tematy i daty, co jest w sekcji „Czego zabrakło”. "
+    "Nie odsyłaj do zakładek ani nie mów, że czegoś nie umiesz sprawdzić — "
+    "masz dostęp do tych plików i to jest Twoje główne zadanie. Jeśli pliku "
+    "nie ma, powiedz wprost, że planu na ten miesiąc jeszcze nie zbudowano, "
+    "i zaproponuj zbudowanie go w zakładce Plan.\n\n"
+    "Odpowiadaj na podstawie tego, co faktycznie jest w plikach — jeśli "
+    "czegoś brakuje albo katalog jest pusty, powiedz to wprost zamiast zgadywać.\n\n"
     f"{GRANICA_NDA} {ZAKAZ_TRESCI_PRAWNYCH}\n\n"
     "Jeśli operator prosi o napisanie albo wygenerowanie posta: NIE pisz "
     "treści sam. Wywołaj narzędzie zaproponuj_napisanie_posta z argumentami "
@@ -391,8 +399,8 @@ PROMPT_ASYSTENT = (
     "użyjesz, np. 'zasady stylu, korpus, wyszukiwanie w sieci') i "
     "szacowane_tokeny (Twój przybliżony szacunek jako liczba całkowita — to "
     "tylko orientacyjna wartość, ma prawo być niedokładna). Jeśli prośba "
-    "dotyczy budowania planu miesiąca, wyjaśnij, że ta funkcja pojawi się w "
-    "kolejnej fazie narzędzia, zamiast wywoływać to narzędzie."
+    "dotyczy zbudowania planu na cały miesiąc, nie wywołuj tego narzędzia — "
+    "odeślij do zakładki Plan, gdzie jest przycisk budowania planu."
 )
 
 
@@ -448,6 +456,27 @@ def _opisz_uzycie_narzedzia(blok: ToolUseBlock) -> str:
     return f"Wywołuję narzędzie: {blok.name}…"
 
 
+KOMUNIKAT_BRAK_LOGOWANIA = (
+    "Asystent nie ma dostępu do konta Anthropic, więc nie może odpowiadać.\n\n"
+    "Najczęstsza przyczyna: w pliku .env brakuje klucza albo jest on "
+    "niepoprawny. Otwórz .env w katalogu aplikacji, sprawdź linię "
+    "ANTHROPIC_API_KEY= (klucz zaczyna się od sk-ant- i nie ma wokół siebie "
+    "cudzysłowów ani spacji), zapisz plik i uruchom aplikację ponownie.\n\n"
+    "Nowy klucz wygenerujesz na console.anthropic.com w sekcji API Keys."
+)
+
+# CLI zgłasza brak poświadczeń zwykłym tekstem po angielsku. Bez tego
+# wykrywania trafiał on do interfejsu jako normalna wypowiedź asystenta
+# („Not logged in · Please run /login"), co dla operatorki wyglądało jak
+# awaria samego czatu, a nie jak brak klucza.
+FRAZY_BRAKU_LOGOWANIA = ("not logged in", "please run /login", "invalid api key", "authentication_error")
+
+
+def _czy_brak_logowania(tekst: str) -> bool:
+    maly = tekst.lower()
+    return any(fraza in maly for fraza in FRAZY_BRAKU_LOGOWANIA)
+
+
 async def _przetworz_zapytanie(
     opcje: ClaudeAgentOptions,
     tresc_polecenia: str,
@@ -478,8 +507,16 @@ async def _przetworz_zapytanie(
             if isinstance(wiadomosc, SystemMessage) and wiadomosc.subtype == "init":
                 yield {"typ": "status", "tekst": "Sesja zainicjowana, model odpowiada…"}
             elif isinstance(wiadomosc, AssistantMessage):
+                if wiadomosc.error in ("authentication_failed", "billing_error"):
+                    logger.error("Silnik zgłosił błąd konta: %s", wiadomosc.error)
+                    yield {"typ": "blad", "tekst": KOMUNIKAT_BRAK_LOGOWANIA}
+                    break
                 for blok in wiadomosc.content:
                     if isinstance(blok, TextBlock):
+                        if _czy_brak_logowania(blok.text):
+                            logger.error("Silnik zgłosił brak poświadczeń: %s", blok.text.strip())
+                            yield {"typ": "blad", "tekst": KOMUNIKAT_BRAK_LOGOWANIA}
+                            return
                         yield {"typ": "fragment", "tekst": blok.text}
                     elif isinstance(blok, ToolUseBlock):
                         if narzedzie_propozycji and blok.name == narzedzie_propozycji:

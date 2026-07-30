@@ -152,7 +152,27 @@ def _policz_miesiace_materialow(katalog_danych: Path) -> int:
 
 
 def _sprawdz_klucz_api() -> WynikSprawdzenia:
-    if os.environ.get("ANTHROPIC_API_KEY"):
+    klucz = os.environ.get("ANTHROPIC_API_KEY", "")
+    if klucz:
+        # Sprawdzenie samego kształtu, bez wywołania API — diagnostyka ma być
+        # darmowa. Łapie najczęstsze pomyłki: cudzysłowy skopiowane razem
+        # z kluczem, spacje albo wklejony token innego rodzaju.
+        podejrzany = (
+            klucz != klucz.strip()
+            or klucz.startswith(("'", '"'))
+            or not klucz.startswith("sk-ant-")
+            or len(klucz.strip()) < 40
+        )
+        if podejrzany:
+            return WynikSprawdzenia(
+                "klucz_api",
+                "Klucz API",
+                "ostrzezenie",
+                "Klucz jest ustawiony, ale nie wygląda na poprawny.",
+                "Otwórz plik .env i sprawdź linię ANTHROPIC_API_KEY= — klucz "
+                "zaczyna się od sk-ant-, nie ma wokół siebie cudzysłowów ani "
+                "spacji. Nowy klucz wygenerujesz na console.anthropic.com.",
+            )
         return WynikSprawdzenia(
             "klucz_api", "Klucz API", "ok", "Zmienna ANTHROPIC_API_KEY jest ustawiona."
         )

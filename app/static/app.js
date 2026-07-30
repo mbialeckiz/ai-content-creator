@@ -565,7 +565,7 @@ function renderujAsystenta() {
         class="monospace"
         rows="2"
         style="flex:1"
-        placeholder="Napisz do asystenta, np. „ile mam postów w korpusie" albo „napisz post o…"
+        placeholder="Zapytaj, np. „jaki jest plan na sierpień" — Enter wysyła, Shift+Enter to nowa linia"
       ></textarea>
       <button class="przycisk-glowny" type="submit">Wyślij</button>
     </form>
@@ -574,7 +574,17 @@ function renderujAsystenta() {
     zdarzenie.preventDefault();
     wyslijWiadomoscAsystenta();
   });
-  document.getElementById("czat-pole").focus();
+
+  // Enter wysyła, Shift+Enter robi nową linię — jak w każdym komunikatorze.
+  // Bez tego trzeba było sięgać myszą po przycisk przy każdej wiadomości.
+  const pole = document.getElementById("czat-pole");
+  pole.addEventListener("keydown", (zdarzenie) => {
+    if (zdarzenie.key === "Enter" && !zdarzenie.shiftKey && !zdarzenie.isComposing) {
+      zdarzenie.preventDefault();
+      wyslijWiadomoscAsystenta();
+    }
+  });
+  pole.focus();
 }
 
 function dodajWiadomoscUzytkownikaDoCzatu(historia, tekst) {
