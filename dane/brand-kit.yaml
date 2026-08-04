@@ -4,10 +4,17 @@
 # Kolory podawaj jako kody szesnastkowe, np. #0B3B5C.
 
 nazwa_firmy: Forces DC
-podpis: Fit-out data center · Norwegia
+podpis: Fit-out data center · Nordyk
 
-# Kolory marki. `tlo` i `tekst` muszą mieć wyraźny kontrast — to na nich
-# ląduje hasło posta.
+# KOLORY WYMAGAJĄ POTWIERDZENIA.
+# Poniższe wartości są tymczasowe — dobrane pod branżę (ciemny granat
+# i bursztynowy akcent), nie odczytane z materiałów firmy. Środowisko,
+# w którym powstawał ten plik, nie miało dostępu do forces.no.
+#
+# Żeby je poprawić: otwórz forces.no, zrób zrzut ekranu strony głównej
+# i przekaż go administratorowi — odczyta z niego prawdziwe kolory i logo.
+#
+# `tlo` i `tekst` muszą mieć wyraźny kontrast — to na nich ląduje hasło posta.
 kolory:
   tlo: "#0E2233"
   tekst: "#FFFFFF"
