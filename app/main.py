@@ -686,6 +686,32 @@ async def api_cofnij_poprawke(dane: PrzywroceniePoprzedniej) -> JSONResponse:
     return JSONResponse({"przywrocono": True})
 
 
+class WyborWariantu(BaseModel):
+    plik: str
+    # None = odznaczenie wyboru (operatorka klika drugi raz w ten sam wariant).
+    indeks: int | None = None
+
+
+@app.post("/api/posty/wybrany", response_model=None)
+async def api_oznacz_wybrany(dane: WyborWariantu) -> JSONResponse:
+    """Zapisuje, który wariant idzie do publikacji (SPEC-frontend 7).
+
+    Bez wywołania modelu — to zwykły zapis do pliku, więc nic nie kosztuje.
+    """
+    sciezka = pliki.sciezka_wygenerowanego_posta(katalog_danych(), dane.plik)
+    if not sciezka.is_file():
+        return JSONResponse({"blad": "Nie znaleźliśmy tego posta."}, status_code=404)
+    try:
+        pliki.oznacz_wybrany_wariant(sciezka, dane.indeks)
+    except OSError as blad:
+        logger.error("Nie udało się zapisać wyboru wariantu w %s: %s", sciezka, blad)
+        return JSONResponse(
+            {"blad": "Nie udało się zapisać wyboru — sprawdź, czy folder danych jest dostępny."},
+            status_code=500,
+        )
+    return JSONResponse({"wybrany": dane.indeks})
+
+
 @app.delete("/api/posty/{nazwa_pliku}", response_model=None)
 async def api_usun_wygenerowany_post(nazwa_pliku: str) -> JSONResponse:
     sciezka = pliki.sciezka_wygenerowanego_posta(katalog_danych(), nazwa_pliku)

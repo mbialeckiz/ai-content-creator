@@ -89,6 +89,19 @@ zamiast zgadywania. Zweryfikowano względem `claude-agent-sdk==0.2.128`
   wewnątrz generatora `StreamingResponse` FastAPI nie blokuje event loopa,
   osobny wątek/task nie jest potrzebny.
 
+## Testy
+
+```bash
+.venv/bin/python testy.py
+```
+
+Sprawdzenia z SPEC sekcja 11, które da się wykonać **bez wywołania modelu**:
+blokada NDA, zamknięta lista narzędzi, zapis tylko do `plan/` i `output/`,
+odczyt i zapis postów, wybór wariantu, import korpusu, brak wycieku klucza
+API do diagnostyki. Uruchomienie nic nie kosztuje, więc warto po każdej
+zmianie. Jakość samych tekstów sprawdza się tylko ręcznie — tego żaden
+test automatyczny nie zastąpi.
+
 ## Koszty — do potwierdzenia przed produkcją
 
 SPEC sekcja 13.4 prosi o zweryfikowanie rozliczenia SDK dla planu Team,

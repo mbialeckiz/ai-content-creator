@@ -547,11 +547,82 @@ label {
   background: var(--akcent-tlo);
 }
 
+/* ---------- Pusty czat (ekran startowy) ---------- */
+
+.pusty-czat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.9rem;
+  min-height: 280px;
+  text-align: center;
+}
+
+.przyklady-czatu {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: center;
+  max-width: 34rem;
+}
+
 /* ---------- Podgląd posta (SPEC-frontend 2.3 i 7) ---------- */
 
 .karta-wariantu {
   padding: 0;
   overflow: hidden;
+}
+
+/* Wariant wskazany do publikacji ma się rzucać w oczy z drugiego końca
+   listy — to jedyna decyzja, jaką operatorka podejmuje na tym ekranie. */
+.karta-wybrana {
+  border-color: var(--ok-linia);
+  box-shadow: var(--cien-2), inset 3px 0 0 var(--ok);
+}
+
+.karta-wybrana .wariant-naglowek {
+  background: var(--ok-tlo);
+  border-bottom-color: var(--ok-linia);
+}
+
+.odznaka-wybrany {
+  display: inline-block;
+  background: var(--ok);
+  color: #fff;
+  border-radius: 999px;
+  padding: 0.1rem 0.55rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.odznaka-wybrany[hidden] {
+  display: none;
+}
+
+.przycisk-wybierz {
+  margin-left: auto;
+  background: var(--tlo-panelu);
+  border: 1px solid var(--ok-linia);
+  border-radius: var(--promien-maly);
+  padding: 0.45rem 0.9rem;
+  color: var(--ok);
+  font-weight: 550;
+  transition: background-color 0.12s ease, border-color 0.12s ease;
+}
+
+.przycisk-wybierz:hover:not(:disabled) {
+  background: var(--ok-tlo);
+  border-color: var(--ok);
+}
+
+.przycisk-wybierz:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.karta-wybrana .przycisk-wybierz {
+  background: var(--ok-tlo);
 }
 
 .wariant-naglowek {

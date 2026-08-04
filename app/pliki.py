@@ -11,6 +11,9 @@ NAGLOWEK_NDA = "## Czego NIE wolno publikować"
 WZORZEC_POGRUBIENIA = re.compile(r"\*\*(.+?)\*\*")
 
 NAGLOWKI_POSTA = ("Wariant 1", "Wariant 2", "Wariant 3", "Facebook", "Brief graficzny", "Braki")
+# Sekcja dopisywana przez aplikację, nie przez asystenta — stąd nie ma jej
+# w NAGLOWKI_POSTA i jej brak nie oznacza, że plik jest niekompletny.
+NAGLOWEK_WYBRANY = "Wybrany wariant"
 WZORZEC_PODEJSCIA = re.compile(r"^\*\*Podejście:\*\*\s*(.+)$", re.MULTILINE)
 
 ZNACZNIKI_LUK = ("[DO UZUPEŁNIENIA", "[DO POTWIERDZENIA")
@@ -214,6 +217,9 @@ class WygenerowanyPost:
     braki: list[str] = field(default_factory=list)
     kompletny: bool = True
     surowy_markdown: str = ""
+    # Numer wariantu wskazanego przez operatorkę jako ten do publikacji
+    # (liczony od zera). None = jeszcze nie wybrała.
+    wybrany: int | None = None
 
 
 def _wytnij_sekcje(tresc: str) -> dict[str, str]:
@@ -270,7 +276,44 @@ def wczytaj_wygenerowany_post(sciezka: Path) -> WygenerowanyPost:
     post.brief_graficzny = sekcje.get("Brief graficzny", "")
     post.braki = _rozbierz_braki(sekcje.get("Braki", ""))
     post.kompletny = all(naglowek in sekcje for naglowek in NAGLOWKI_POSTA)
+    post.wybrany = _odczytaj_wybrany(sekcje, len(post.warianty))
     return post
+
+
+def _odczytaj_wybrany(sekcje: dict[str, str], liczba_wariantow: int) -> int | None:
+    """Numer wybranego wariantu z sekcji „Wybrany wariant".
+
+    Sekcja może być dopisana ręcznie w edytorze tekstu (CLAUDE.md #2), więc
+    czytamy pierwszą liczbę, jaka się w niej trafi, i milcząco odrzucamy
+    wartości spoza zakresu — zły numer nie może wysypać całego ekranu.
+    """
+    dopasowanie = re.search(r"\d+", sekcje.get(NAGLOWEK_WYBRANY, ""))
+    if not dopasowanie:
+        return None
+    numer = int(dopasowanie.group()) - 1
+    return numer if 0 <= numer < liczba_wariantow else None
+
+
+def oznacz_wybrany_wariant(sciezka: Path, indeks: int | None) -> None:
+    """Zapisuje w pliku posta, który wariant idzie do publikacji.
+
+    Wybór trzymamy w samym pliku, a nie w przeglądarce — ma przetrwać
+    odświeżenie strony i restart aplikacji, a operatorka ma go zobaczyć
+    także wtedy, gdy otworzy plik na Drive.
+    """
+    tresc = sciezka.read_text(encoding="utf-8")
+    wzorzec = re.compile(
+        rf"^## {re.escape(NAGLOWEK_WYBRANY)}[ \t]*\n.*?(?=^## |\Z)",
+        re.MULTILINE | re.DOTALL,
+    )
+    bez_sekcji = wzorzec.sub("", tresc).rstrip()
+
+    if indeks is None:
+        sciezka.write_text(bez_sekcji + "\n", encoding="utf-8")
+        return
+
+    nowa = f"{bez_sekcji}\n\n## {NAGLOWEK_WYBRANY}\nWariant {indeks + 1}\n"
+    sciezka.write_text(nowa, encoding="utf-8")
 
 
 def podmien_wariant(sciezka: Path, indeks: int, nowa_tresc: str) -> None:
@@ -319,7 +362,12 @@ def lista_wygenerowanych_postow(katalog_danych: Path) -> list[dict[str, object]]
             post = wczytaj_wygenerowany_post(plik)
         except OSError:
             continue
-        podglad = post.warianty[0].tresc if post.warianty else post.surowy_markdown
+        # Na liście pokazujemy wariant wskazany do publikacji, a nie zawsze
+        # pierwszy — operatorka szuka na niej tego, co wybrała.
+        if post.warianty:
+            podglad = post.warianty[post.wybrany or 0].tresc
+        else:
+            podglad = post.surowy_markdown
         # Nazwa pliku ma postać RRRR-MM-DD_slug — rozbijamy ją na datę i temat.
         data, _, slug = plik.stem.partition("_")
         wpisy.append(
@@ -329,6 +377,7 @@ def lista_wygenerowanych_postow(katalog_danych: Path) -> list[dict[str, object]]
                 "temat": slug.replace("-", " ") or plik.stem,
                 "podglad": " ".join(podglad.split())[:120],
                 "braki": len(post.braki),
+                "wybrany": post.wybrany,
             }
         )
     return sorted(wpisy, key=lambda wpis: wpis["plik"], reverse=True)

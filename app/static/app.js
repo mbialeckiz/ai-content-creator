@@ -309,6 +309,7 @@ async function wczytajHistoriePostow() {
           <button class="link-posta" data-otworz-post="${escapeHtml(wpis.plik)}">
             ${escapeHtml(wpis.data)} — ${escapeHtml(wpis.temat)}
           </button>
+          ${wpis.wybrany !== null && wpis.wybrany !== undefined ? `<span class="odznaka-wybrany">Wariant ${wpis.wybrany + 1} wybrany</span>` : ""}
           ${wpis.braki ? `<span class="znacznik-luk">${wpis.braki} braków</span>` : ""}
           <div class="szczegoly">${escapeHtml(wpis.podglad)}…</div>
         </div>
@@ -407,12 +408,13 @@ function elementWynikuPosta(post, sciezkaPliku, czesciowy = false) {
   const kartyWariantow = post.warianty
     .map(
       (wariant, indeks) => `
-      <div class="karta karta-wariantu">
+      <div class="karta karta-wariantu${post.wybrany === indeks ? " karta-wybrana" : ""}">
         <div class="wariant-naglowek">
           <strong>Wariant ${indeks + 1}</strong>
           <span class="szczegoly">
             <span class="wariant-etykieta">${escapeHtml(wariant.etykieta)}</span>
             ${wariant.znaki} znaków
+            <span class="odznaka-wybrany"${post.wybrany === indeks ? "" : " hidden"}>Wybrany</span>
           </span>
         </div>
         <div class="podglad-posta">
@@ -429,6 +431,9 @@ function elementWynikuPosta(post, sciezkaPliku, czesciowy = false) {
           <button class="przycisk-drugorzedny" data-kopiuj-wariant="${indeks}">Kopiuj</button>
           <button class="przycisk-drugorzedny" data-popraw="${indeks}">Popraw</button>
           <button class="przycisk-drugorzedny" data-cofnij="${indeks}" hidden>Cofnij</button>
+          <button class="przycisk-wybierz" data-wybierz="${indeks}">
+            ${post.wybrany === indeks ? "Odznacz wybrany" : "Zapisz jako wybrany"}
+          </button>
         </div>
         <div class="pole-poprawki" data-poprawka-dla="${indeks}" hidden></div>
       </div>`
@@ -554,6 +559,65 @@ function podepnijPrzyciskiKopiowania(zakres = document) {
     przycisk.dataset.podpieto = "1";
     przycisk.addEventListener("click", () => cofnijPoprawke(przycisk));
   });
+
+  zakres.querySelectorAll("[data-wybierz]").forEach((przycisk) => {
+    if (przycisk.dataset.podpieto) return;
+    przycisk.dataset.podpieto = "1";
+    przycisk.addEventListener("click", () =>
+      zapiszWybranyWariant(przycisk, wynikDlaPrzycisku(przycisk))
+    );
+  });
+}
+
+// Wybór jednego wariantu do publikacji (SPEC-frontend 7). Zapisujemy go
+// w pliku posta, żeby przetrwał odświeżenie strony i restart aplikacji.
+async function zapiszWybranyWariant(przycisk, wynik) {
+  const indeks = Number(przycisk.dataset.wybierz);
+  // Drugi klik w ten sam wariant odznacza wybór — inaczej pomyłki nie da się
+  // cofnąć bez wchodzenia w plik.
+  const nowyWybor = wynik.wybrany === indeks ? null : indeks;
+  const kontener = przycisk.closest("[data-post-id]");
+  const oryginalnyTekst = przycisk.textContent.trim();
+
+  przycisk.disabled = true;
+  let odpowiedz;
+  try {
+    odpowiedz = await fetch("/api/posty/wybrany", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ plik: wynik.plik, indeks: nowyWybor }),
+    });
+  } catch (blad) {
+    przycisk.disabled = false;
+    przycisk.textContent = "Nie udało się połączyć z serwerem";
+    setTimeout(() => (przycisk.textContent = oryginalnyTekst), 2500);
+    return;
+  }
+
+  const dane = await odpowiedz.json();
+  przycisk.disabled = false;
+  if (!odpowiedz.ok) {
+    przycisk.textContent = dane.blad || "Nie udało się zapisać wyboru";
+    setTimeout(() => (przycisk.textContent = oryginalnyTekst), 2500);
+    return;
+  }
+
+  wynik.wybrany = nowyWybor;
+  odswiezOznaczenieWybranego(kontener, nowyWybor);
+  wczytajHistoriePostow();
+}
+
+function odswiezOznaczenieWybranego(kontener, wybrany) {
+  if (!kontener) return;
+  kontener.querySelectorAll("[data-wybierz]").forEach((przycisk) => {
+    const indeks = Number(przycisk.dataset.wybierz);
+    const karta = kartaWariantuDla(przycisk);
+    const jestWybrany = indeks === wybrany;
+    karta.classList.toggle("karta-wybrana", jestWybrany);
+    przycisk.textContent = jestWybrany ? "Odznacz wybrany" : "Zapisz jako wybrany";
+    const odznaka = karta.querySelector(".odznaka-wybrany");
+    if (odznaka) odznaka.hidden = !jestWybrany;
+  });
 }
 
 function kartaWariantuDla(przycisk) {
@@ -577,7 +641,9 @@ async function zrobGrafike(przycisk) {
     odpowiedz = await fetch("/api/grafika", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ plik: wynik.plik, indeks: 0 }),
+      // Grafika powstaje na podstawie wariantu wskazanego do publikacji;
+      // dopóki operatorka nie wybrała, bierzemy pierwszy.
+      body: JSON.stringify({ plik: wynik.plik, indeks: wynik.wybrany ?? 0 }),
     });
   } catch (blad) {
     obszar.innerHTML = `<p class="instrukcja-naprawy">Nie udało się połączyć z serwerem (${escapeHtml(blad.message)}).</p>`;
@@ -930,21 +996,56 @@ async function uruchomRedaktora() {
 const propozycje = {};
 let licznikPropozycji = 0;
 
+// Asystent jest ekranem startowym, więc pusty prostokąt to pierwsze, co widzi
+// operatorka. Zamiast niego dajemy gotowe zdania do kliknięcia — pokazują,
+// co aplikacja w ogóle potrafi, bez czytania instrukcji.
+const PRZYKLADY_CZATU = [
+  "Jaki jest plan na ten miesiąc?",
+  "Napisz post o przygotowaniu zespołu przed startem fit-outu",
+  "Czego brakuje w materiałach na ten miesiąc?",
+  "Pokaż posty, które już wygenerowaliśmy",
+];
+
+function elementPustegoCzatu() {
+  const przyciski = PRZYKLADY_CZATU.map(
+    (tekst) =>
+      `<button class="przycisk-drugorzedny" data-przyklad-czatu="${escapeHtml(tekst)}">${escapeHtml(tekst)}</button>`
+  ).join("");
+  return `
+    <div class="pusty-czat">
+      <p class="placeholder">Napisz, czego potrzebujesz — normalnym zdaniem, tak jak do człowieka.</p>
+      <div class="przyklady-czatu">${przyciski}</div>
+    </div>`;
+}
+
+function podepnijPrzykladyCzatu() {
+  document.querySelectorAll("[data-przyklad-czatu]").forEach((przycisk) => {
+    przycisk.addEventListener("click", () => {
+      const pole = document.getElementById("czat-pole");
+      pole.value = przycisk.dataset.przykladCzatu;
+      pole.focus();
+      wyslijWiadomoscAsystenta();
+    });
+  });
+}
+
 function renderujAsystenta() {
   OBSZAR.innerHTML = `
     <h2>Asystent</h2>
-    <div class="karta" id="czat-historia" style="min-height:320px;max-height:60vh;overflow-y:auto"></div>
+    <div class="karta" id="czat-historia" style="min-height:320px;max-height:60vh;overflow-y:auto">
+      ${elementPustegoCzatu()}
+    </div>
     <form id="czat-formularz" style="display:flex;gap:0.5rem;margin-top:0.75rem">
       <textarea
         id="czat-pole"
-        class="monospace"
         rows="2"
         style="flex:1"
-        placeholder="Zapytaj, np. „jaki jest plan na sierpień" — Enter wysyła, Shift+Enter to nowa linia"
+        placeholder="Napisz, czego potrzebujesz — Enter wysyła, Shift+Enter robi nową linię"
       ></textarea>
       <button class="przycisk-glowny" type="submit">Wyślij</button>
     </form>
   `;
+  podepnijPrzykladyCzatu();
   document.getElementById("czat-formularz").addEventListener("submit", (zdarzenie) => {
     zdarzenie.preventDefault();
     wyslijWiadomoscAsystenta();
@@ -1126,6 +1227,7 @@ async function wyslijWiadomoscAsystenta() {
   pole.value = "";
 
   const historia = document.getElementById("czat-historia");
+  historia.querySelector(".pusty-czat")?.remove();
   dodajWiadomoscUzytkownikaDoCzatu(historia, tresc);
   const tura = utworzTureAsystentaWCzacie(historia);
 
