@@ -4,29 +4,51 @@ Co asystent wie o Forces DC i czego nie wolno publikować.
 
 ## Czym zajmuje się firma
 
-Ustalone ze strony forces.no (lipiec 2026) — **do potwierdzenia u klienta**:
+Odczytane ze strony forces.no (lipiec 2026) — **do potwierdzenia u klienta**.
 
-- Forces DC dostarcza wyspecjalizowane zespoły do prac fit-out przy budowie
-  data center **w całym regionie nordyckim**, nie tylko w Norwegii.
-- Zespół: monterzy, elektrycy, stolarze i malarze z doświadczeniem
-  w obiektach data center.
-- Zaplecze ok. 300 gotowych do pracy specjalistów.
-- Wyróżnik komunikowany na stronie: **własni Site Managerowie i Project
-  Managerowie na budowie**, w bezpośrednim kontakcie z kierownictwem klienta
-  — nie samo „użyczanie ludzi".
-- Zakres wykracza poza dostarczenie rąk do pracy: doradztwo, obsługa HR,
-  rekrutacja, wdrożenie i bieżące zarządzanie zespołem.
-- Druga usługa obok fit-outu: logistyka placu budowy (site logistics).
-- Deklaracja ze strony głównej: „Experts in all fit-out tasks in DC
-  construction".
+**Pozycjonowanie i hasła własne firmy:**
+- „Special Forces For Nordic Data Center Industry" — hasło ze strony głównej
+- „Providing skilled teams to support all fit-out tasks and site logistic
+  in data center construction"
+- Zasięg: **cały region nordycki**, nie sama Norwegia
+
+**Czym się różnią (ich własne sformułowanie, sekcja „What makes us different"):**
+własne wsparcie na miejscu — Site Managerowie i Project Managerowie
+nadzorują zespoły i pozostają w bezpośrednim kontakcie z kierownictwem
+klienta. To nie jest samo użyczanie ludzi. Do tego pełna obsługa HR:
+rekrutacja, wdrożenie i bieżące zarządzanie zespołem.
+
+**Liczby podawane publicznie na stronie** (sekcja „Our Impact in Numbers"):
+- +269 342 godzin w data center **bez wypadków (HSE)**
+- +193 000 metrów ułożonych kabli
+- +30 zespołów, +15 liderów, +300 wykwalifikowanych pracowników
+- +30% wzrost efektywności
+
+**Zespół:** monterzy, elektrycy, stolarze, malarze, monterzy paneli
+warstwowych. Certyfikaty wymieniane na stronie: FSE, podnośniki nożycowe,
+praca na wysokości.
+
+**Odbiorcy:** generalni wykonawcy (pełny pakiet HR) oraz podwykonawcy
+(elastyczne zwiększanie mocy przerobowych).
+
+**Przynależność branżowa:** członek Norsk Datasenter Industri, producent
+NDC TV. To jest gotowy temat pod typ posta „obecnosc-branzowa".
+
+**Projekty wymienione publicznie na własnej stronie** (sekcja „Projects We
+Power"): Lefdal Mine, VLB1A Skien, Hamar, Fetsund, Enebakk.
+
+**Firmy pokazane publicznie na stronie jako referencje** (sekcja „Trusted by
+Industry Leaders"): Schneider Electric, CTS Nordics, Stengel IT-Infrastruktur,
+Oslo Bilutleie, est-G.T Nordics AS.
+
+> **Uwaga do rozstrzygnięcia z klientem.** Powyższe nazwy projektów i firm
+> Forces DC publikuje samodzielnie na własnej stronie, więc nie są objęte
+> tajemnicą. Nie znaczy to jednak, że wolno je swobodnie łączyć z detalami
+> realizacji w postach — ustal z Maćkiem, co konkretnie wolno napisać
+> o tych lokalizacjach. Do czasu ustalenia asystent ich nie używa.
 
 [DO UZUPEŁNIENIA: powyższe pochodzi ze strony internetowej, nie od klienta —
-potwierdź z Magdą i uzupełnij o rzeczy, których na stronie nie ma.
-
-Reszta tego pliku ma zostać zastąpiona wersją dostarczoną przez
-administratora. Musi zawierać sekcję „Czego NIE wolno publikować" z listą
-nazw klientów/hyperscalerów objętych NDA (SPEC 10.2–10.3) — bez niej
-blokada NDA w aplikacji nie ma czego wykrywać.]
+potwierdź z Magdą i uzupełnij o rzeczy, których na stronie nie ma.]
 
 ## Czego NIE wolno publikować
 

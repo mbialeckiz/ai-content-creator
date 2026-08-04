@@ -1,43 +1,42 @@
 # Identyfikacja wizualna Forces DC — używana przy tworzeniu grafik do postów.
 #
 # Ten plik edytujesz w aplikacji (zakładka Styl → Identyfikacja wizualna).
-# Kolory podawaj jako kody szesnastkowe, np. #0B3B5C.
+# Kolory podawaj jako kody szesnastkowe, np. #1E2127.
+#
+# Wartości odczytane ze strony forces.no (lipiec 2026) na podstawie zrzutów
+# ekranu. Odczyt z obrazu jest bliski, ale nie co do bitu — jeśli macie
+# oficjalną księgę znaku z dokładnymi kodami, podmieńcie je tutaj.
 
 nazwa_firmy: Forces DC
-podpis: Fit-out data center · Nordyk
+podpis: Special Forces For Nordic Data Center Industry
 
-# KOLORY WYMAGAJĄ POTWIERDZENIA.
-# Poniższe wartości są tymczasowe — dobrane pod branżę (ciemny granat
-# i bursztynowy akcent), nie odczytane z materiałów firmy. Środowisko,
-# w którym powstawał ten plik, nie miało dostępu do forces.no.
-#
-# Żeby je poprawić: otwórz forces.no, zrób zrzut ekranu strony głównej
-# i przekaż go administratorowi — odczyta z niego prawdziwe kolory i logo.
-#
-# `tlo` i `tekst` muszą mieć wyraźny kontrast — to na nich ląduje hasło posta.
 kolory:
-  tlo: "#0E2233"
+  # Ciemna grafitowa podstawa, na której zbudowana jest cała strona.
+  tlo: "#1E2127"
   tekst: "#FFFFFF"
-  akcent: "#F0A500"
-  tlo_alternatywne: "#F4F5F7"
-  tekst_alternatywny: "#0E2233"
+  # Stonowane złoto — jedyny kolor akcentu na stronie. Występuje w logo
+  # (człon „DC"), przyciskach „Let's Talk" i „More About Us" oraz ikonach.
+  akcent: "#C2A470"
+  # Jasna sekcja ze strony („Custom-fit manpower solutions").
+  tlo_alternatywne: "#EAEAEA"
+  tekst_alternatywny: "#1E2127"
 
-# Nazwa kroju z systemu. Aplikacja rysuje grafikę w przeglądarce, więc
-# działa każdy font zainstalowany na komputerze operatorki. Jeśli marka
-# używa kroju, którego nie ma w systemie, wpisz najbliższy zamiennik.
+# Nagłówki na stronie są złożone geometrycznym groteskiem o dwupiętrowym „a".
+# Nie znam nazwy tego kroju z samego obrazu, więc podstawiam najbliższy krój
+# dostępny na każdym Macu. Jeśli księga znaku podaje właściwą nazwę, wpisz ją
+# na początku listy — reszta zostanie jako zabezpieczenie.
 kroje:
-  naglowek: "Helvetica Neue, Helvetica, Arial, sans-serif"
-  podpis: "Helvetica Neue, Helvetica, Arial, sans-serif"
+  naglowek: "Avenir Next, Avenir, Helvetica Neue, Helvetica, sans-serif"
+  podpis: "Avenir Next, Avenir, Helvetica Neue, Helvetica, sans-serif"
 
-# Logo: wgraj plik przez zakładkę Styl. Obsługiwane PNG i SVG.
-# Wersja na ciemne tło jest opcjonalna — jeśli jej nie podasz, użyjemy
-# podstawowej.
+# Logo: biały napis FORCES z członem DC w kolorze akcentu, litery rozstrzelone
+# i lekko techniczne. Wgraj plik przez zakładkę Styl → Identyfikacja wizualna,
+# a potem wpisz tu jego nazwę. Strona używa wersji na ciemnym tle.
 logo:
   plik: ""
   plik_na_ciemnym: ""
   wysokosc_px: 64
 
-# Domyślny format. LinkedIn dobrze pokazuje kwadrat w strumieniu.
 format:
   szerokosc: 1200
   wysokosc: 1200
