@@ -399,7 +399,7 @@ function podgladZLiniaObciecia(tresc) {
 // nie ma powodu budować pod to historii na dysku.
 const poprzednieWersje = {};
 
-function elementWynikuPosta(post, sciezkaPliku) {
+function elementWynikuPosta(post, sciezkaPliku, czesciowy = false) {
   const idWyniku = ++licznikWynikowPostow;
   wynikiPostow[idWyniku] = post;
   wynikiPostow[idWyniku].plik = post.plik || sciezkaPliku;
@@ -446,8 +446,22 @@ function elementWynikuPosta(post, sciezkaPliku) {
         Sprawdź surowy plik: ${escapeHtml(sciezkaPliku || "")}
       </p>`;
 
+  // Przerwany przebieg nie znika — backend zapisuje to, co model zdążył
+  // napisać. Operatorka musi wiedzieć, że patrzy na urwany tekst.
+  const czesciowyHtml = czesciowy
+    ? `<div class="karta karta-ostrzegawcza">
+        <p class="instrukcja-naprawy" style="margin:0">
+          Pisanie zostało przerwane, ale to, co powstało, jest już zapisane —
+          nic nie przepadło. Poniżej może brakować końcówki albo całych sekcji.
+          Kliknij „Popraw” przy wybranym wariancie, żeby dokończyć,
+          albo wygeneruj jeszcze raz.
+        </p>
+      </div>`
+    : "";
+
   return `
     <div data-post-id="${idWyniku}">
+      ${czesciowyHtml}
       <h3>Warianty</h3>
       ${kartyWariantow}
       <details class="karta">
@@ -894,11 +908,14 @@ async function uruchomRedaktora() {
       if (dane.bledny) {
         dopiszWpis("Generowanie zakończyło się błędem.", "blad");
       } else if (dane.post) {
-        wynik.innerHTML = elementWynikuPosta(dane.post, dane.sciezka_pliku);
+        wynik.innerHTML = elementWynikuPosta(dane.post, dane.sciezka_pliku, dane.czesciowy);
         podepnijPrzyciskiKopiowania();
         wczytajHistoriePostow();
       } else {
-        dopiszWpis("Brak zapisanego pliku wynikowego — sprawdź log powyżej.", "blad");
+        dopiszWpis(
+          dane.blad_zapisu || "Asystent nie zwrócił żadnego tekstu — spróbuj jeszcze raz.",
+          "blad"
+        );
       }
       zakoncz();
     } else if (dane.typ === "blad") {
@@ -1051,10 +1068,17 @@ async function uruchomPropozycje(przycisk) {
       if (zdarzenie.bledny) {
         dopiszWpis("Generowanie zakończyło się błędem.", "blad");
       } else if (zdarzenie.post) {
-        karta.outerHTML = elementWynikuPosta(zdarzenie.post, zdarzenie.sciezka_pliku);
+        karta.outerHTML = elementWynikuPosta(
+          zdarzenie.post,
+          zdarzenie.sciezka_pliku,
+          zdarzenie.czesciowy
+        );
         podepnijPrzyciskiKopiowania();
       } else {
-        dopiszWpis("Brak zapisanego pliku wynikowego — sprawdź log powyżej.", "blad");
+        dopiszWpis(
+          zdarzenie.blad_zapisu || "Asystent nie zwrócił żadnego tekstu — spróbuj jeszcze raz.",
+          "blad"
+        );
       }
     } else if (zdarzenie.typ === "blad") {
       dopiszWpis(zdarzenie.tekst, "blad");

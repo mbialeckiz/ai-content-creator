@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from datetime import date
 from pathlib import Path
 
 NAGLOWEK_NDA = "## Czego NIE wolno publikować"
@@ -56,6 +57,48 @@ PLIKI_WARSTWY_JAKOSCI: dict[str, dict[str, str]] = {
 def policz_luki(tresc: str) -> int:
     """Liczy miejsca wymagające uzupełnienia przez człowieka (SPEC-frontend 9)."""
     return sum(tresc.count(znacznik) for znacznik in ZNACZNIKI_LUK)
+
+
+def zbuduj_material_dla_redaktora(
+    katalog_danych: Path, limit_postow: int = 4, limit_znakow_postu: int = 1200
+) -> str:
+    """Komplet, którego redaktor potrzebuje do napisania posta: zasady stylu,
+    fakty o firmie i kilka postów korpusu do kalibracji.
+
+    Podajemy mu to wprost, zamiast pozwalać szukać narzędziami. Te pliki
+    ważą razem kilka kilobajtów, ale ich odnalezienie i odczytanie zajmuje
+    agentowi kilkanaście tur, a każda tura przeładowuje cały kontekst —
+    samo dotarcie do treści kosztowało więcej niż jej napisanie.
+    """
+    czesci = [wczytaj_zasady_stylu(katalog_danych)]
+
+    fakty = katalog_danych / "baza-wiedzy" / "forces-dc-fakty.md"
+    if fakty.is_file():
+        czesci.append(f"### Fakty o firmie\n{fakty.read_text(encoding='utf-8').strip()[:4000]}")
+
+    # Kalibracja na korpusie: najpierw posty z największym zaangażowaniem,
+    # bo to one pokazują, co u tej publiczności działa (SPEC 8.2 pkt 3).
+    from app import korpus as modul_korpusu
+
+    posty, _ = modul_korpusu.wczytaj_korpus(katalog_danych)
+    najlepsze = sorted(posty, key=lambda p: p.reakcje, reverse=True)[:limit_postow]
+    if najlepsze:
+        wzorce = "\n\n---\n\n".join(
+            f"[typ: {p.typ}, reakcje: {p.reakcje}]\n{p.tresc[:limit_znakow_postu]}"
+            for p in najlepsze
+        )
+        czesci.append(
+            "### Opublikowane posty do kalibracji stylu\n"
+            "Tak Forces DC pisze naprawdę. Trzymaj się tego rytmu i długości.\n\n"
+            f"{wzorce}"
+        )
+    else:
+        czesci.append(
+            "### Opublikowane posty do kalibracji stylu\n"
+            "BRAK — korpus jest pusty. Napisz post na ogólnym wyczuciu stylu "
+            "branżowego i zgłoś ten brak w sekcji Braki."
+        )
+    return "\n\n".join(czesci)
 
 
 def wczytaj_zasady_stylu(katalog_danych: Path, limit_znakow: int = 6000) -> str:
@@ -289,6 +332,29 @@ def lista_wygenerowanych_postow(katalog_danych: Path) -> list[dict[str, object]]
             }
         )
     return sorted(wpisy, key=lambda wpis: wpis["plik"], reverse=True)
+
+
+def zapisz_wygenerowany_post(katalog_danych: Path, brief: str, tresc: str) -> str:
+    """Zapisuje treść od redaktora do output/ i zwraca nazwę pliku.
+
+    Zapis robi backend, nie agent: przerwany przebieg zostawia wtedy na dysku
+    to, co model zdążył napisać, zamiast przepadać w całości. Przy okazji
+    znika problem agenta podającego ścieżkę bezwzględną zamiast względnej.
+    """
+    from app.korpus import zbuduj_slug
+
+    katalog = katalog_danych / "output"
+    katalog.mkdir(parents=True, exist_ok=True)
+
+    podstawa = f"{date.today().isoformat()}_{zbuduj_slug(brief)}"
+    plik = katalog / f"{podstawa}.md"
+    licznik = 2
+    while plik.exists():
+        plik = katalog / f"{podstawa}-{licznik}.md"
+        licznik += 1
+
+    plik.write_text(tresc.strip() + "\n", encoding="utf-8")
+    return plik.name
 
 
 def sciezka_wygenerowanego_posta(katalog_danych: Path, nazwa_pliku: str) -> Path:

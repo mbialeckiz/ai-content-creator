@@ -168,14 +168,44 @@ class PolecenieRedaktora(BaseModel):
 
 
 async def _strumien_redaktora(brief: str) -> AsyncIterator[str]:
-    async for zdarzenie in silnik.uruchom_redaktor(katalog_danych(), brief):
-        if zdarzenie["typ"] == "wynik" and not zdarzenie["bledny"] and zdarzenie.get("sciezka_pliku"):
-            sciezka_pelna = katalog_danych() / zdarzenie["sciezka_pliku"]
-            try:
-                zdarzenie["post"] = dataclasses.asdict(pliki.wczytaj_wygenerowany_post(sciezka_pelna))
-            except OSError as blad:
-                logger.error("Nie udało się odczytać zapisanego posta %s: %s", sciezka_pelna, blad)
-                zdarzenie["post"] = None
+    """Zbiera treść od redaktora i to backend zapisuje plik, nie agent.
+
+    Dzięki temu przerwany przebieg (np. po przekroczeniu limitu kosztu) nie
+    przepada w całości: zapisujemy to, co model zdążył napisać, a operatorka
+    dostaje gotowe warianty zamiast samego komunikatu o błędzie.
+    """
+    katalog = katalog_danych()
+    material = pliki.zbuduj_material_dla_redaktora(katalog)
+    zebrane: list[str] = []
+    przerwane = False
+
+    async for zdarzenie in silnik.uruchom_redaktor(katalog, brief, material):
+        if zdarzenie["typ"] == "fragment":
+            zebrane.append(zdarzenie["tekst"])
+            continue
+        if zdarzenie["typ"] == "blad":
+            przerwane = True
+            yield _jako_sse(zdarzenie)
+            continue
+        if zdarzenie["typ"] == "wynik":
+            zdarzenie["post"] = None
+            tresc = "".join(zebrane).strip()
+            if tresc:
+                try:
+                    nazwa = pliki.zapisz_wygenerowany_post(katalog, brief, tresc)
+                    zdarzenie["sciezka_pliku"] = nazwa
+                    zdarzenie["post"] = dataclasses.asdict(
+                        pliki.wczytaj_wygenerowany_post(
+                            pliki.sciezka_wygenerowanego_posta(katalog, nazwa)
+                        )
+                    )
+                    zdarzenie["czesciowy"] = przerwane or not zdarzenie["post"]["kompletny"]
+                except OSError as blad:
+                    logger.error("Nie udało się zapisać wygenerowanego posta: %s", blad)
+                    zdarzenie["blad_zapisu"] = (
+                        "Tekst powstał, ale nie udało się go zapisać — sprawdź, "
+                        "czy folder danych jest dostępny."
+                    )
         yield _jako_sse(zdarzenie)
 
 

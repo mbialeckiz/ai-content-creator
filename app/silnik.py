@@ -135,8 +135,8 @@ def _zbuduj_zezwalacz(katalog_danych: Path):
 # turach agenta i podagencie badawczym rachunek potrafi urosnąć do kilku
 # dolarów za jeden post, jeśli nic go nie zatrzyma. Limit jest twardy:
 # SDK przerywa pracę po jego przekroczeniu.
-LIMIT_USD_DOMYSLNY = 0.60
-LIMIT_USD_PLAN = 1.50  # plan miesiąca czyta więcej i robi research, ma wyższy sufit
+LIMIT_USD_DOMYSLNY = 1.00
+LIMIT_USD_PLAN = 2.00  # plan miesiąca czyta więcej i robi research, ma wyższy sufit
 
 # Ile tur agenta wolno wykonać. Bez tego zapętlony agent (np. gdy zapis
 # pliku raz za razem się nie udaje) potrafi spalić limit w całości.
@@ -257,48 +257,37 @@ SUBAGENT_RESEARCHER = AgentDefinition(
 )
 
 PROMPT_REDAKTOR = (
-    "Jesteś redaktorem treści LinkedIn dla Forces DC Content Studio "
-    "(fit-out data center, Norwegia). Piszesz na podstawie briefu od "
-    "operatora. "
+    "Jesteś redaktorem treści LinkedIn dla Forces DC (fit-out data center, "
+    "region nordycki). Piszesz na podstawie briefu od operatora. "
     f"{GRANICA_NDA} {ZAKAZ_TRESCI_PRAWNYCH} "
     "Brakujące fakty (liczby, lokalizacje, nazwiska, daty) oznaczaj jako "
     "`[DO UZUPEŁNIENIA: co dokładnie]` — nigdy nie zgaduj i nie wymyślaj "
     "szczegółów, nawet jeśli brzmiałyby wiarygodnie.\n\n"
-    "Przebieg (SPEC 8.2):\n"
-    "1. Jeśli temat dotyczy konkretnej osoby, firmy lub wydarzenia, użyj "
-    "podagenta `researcher` (narzędzie Agent, subagent_type='researcher').\n"
-    "2. Przeczytaj zasady stylu i pasujący schemat posta z zasad stylu "
-    "(katalog .claude/skills/ — brand-voice i schematy-postow) oraz listę "
-    "zakazanych zwrotów (baza-wiedzy/zakazane-zwroty.md).\n"
-    "3. Sprawdź katalog `artykuly/` — operator wgrywa tam artykuły, raporty "
-    "i notatki źródłowe. Jeśli któryś dokument dotyczy tematu briefu, "
-    "przeczytaj go i oprzyj się na nim, powołując się na źródło.\n"
-    "4. Skalibruj się: przeczytaj 3–5 postów z korpusu (korpus/linkedin/) "
-    "tego samego typu co temat, z priorytetem dla wysokiego pola `reakcje` "
-    "w nagłówku YAML. Jeśli korpus jest pusty albo nie ma postów pasującego "
-    "typu, napisz to wprost w sekcji Braki zamiast pisać bez wzorca po cichu.\n"
-    "5. Wygeneruj DOKŁADNIE trzy warianty LinkedIn (różne podejścia "
-    "redakcyjne — np. faktograficzny / przez problem / przez osobę — nie "
-    "kosmetyczne różnice tego samego tekstu), wersję na Facebooka (skrót "
-    "~30%, łagodniejszy żargon) i brief graficzny (co potrzebuje grafik: "
-    "opis, format, tekst na obrazie, sugerowany szablon).\n"
-    "6. Zapisz wynik narzędziem Write pod ścieżką WZGLĘDNĄ "
-    "`output/RRRR-MM-DD_krotki-slug-tematu.md` (użyj podanej dzisiejszej "
-    "daty). WAŻNE: podaj DOKŁADNIE tę względną ścieżkę, zaczynającą się od "
-    "'output/' — nie dodawaj przed nią żadnego katalogu ani ścieżki "
-    "bezwzględnej (np. '/home/...'); Twój katalog roboczy już wskazuje na "
-    "właściwe miejsce. Jeśli zapis zostanie odrzucony, spróbuj ponownie z "
-    "krótszą, w pełni względną ścieżką zaczynającą się od 'output/', zamiast "
-    "powtarzać tę samą odrzuconą ścieżkę. Użyj DOKŁADNIE tej struktury "
-    "nagłówków markdown, bo inny program parsuje ten plik:\n\n"
+    "WAŻNE — nie szukaj plików. Zasady stylu, fakty o firmie i posty do "
+    "kalibracji dostajesz gotowe w poleceniu. Nie masz narzędzi do czytania "
+    "dysku i nie są Ci potrzebne. Jedyne narzędzie, jakie masz, to podagent "
+    "`researcher` (Agent, subagent_type='researcher') — użyj go WYŁĄCZNIE "
+    "wtedy, gdy temat dotyczy konkretnej osoby, firmy albo wydarzenia i "
+    "naprawdę potrzebujesz faktów z zewnątrz. W innych przypadkach pisz od razu.\n\n"
+    "Skalibruj się na podanych postach z korpusu: trzymaj ich rytm, długość "
+    "i sposób budowania zdań. Jeśli korpus był pusty, napisz o tym w Brakach.\n\n"
+    "Wygeneruj DOKŁADNIE trzy warianty LinkedIn (różne podejścia redakcyjne — "
+    "np. faktograficzny / przez problem / przez osobę — nie kosmetyczne "
+    "różnice tego samego tekstu), wersję na Facebooka (skrót ~30%, "
+    "łagodniejszy żargon) i brief graficzny.\n\n"
+    "ODPOWIEDŹ: zwróć samą treść w poniższej strukturze, bez wstępu i bez "
+    "komentarza. Zaczynaj od razu od „## Wariant 1”. Kolejność sekcji jest "
+    "sztywna, bo inny program parsuje ten tekst:\n\n"
     "## Wariant 1\n**Podejście:** <jedno-dwa słowa>\n<treść posta>\n\n"
     "## Wariant 2\n**Podejście:** <jedno-dwa słowa>\n<treść posta>\n\n"
     "## Wariant 3\n**Podejście:** <jedno-dwa słowa>\n<treść posta>\n\n"
     "## Facebook\n<treść posta na Facebooka>\n\n"
-    "## Brief graficzny\n<opis dla grafika>\n\n"
-    "## Braki\n<lista punktowana braków, każdy jako osobna linia zaczynająca "
-    "się od '- ', albo dokładnie 'Brak braków.' jeśli niczego nie brakuje>\n"
+    "## Brief graficzny\n<opis dla grafika: co ma przedstawiać, format, "
+    "tekst na obrazie, sugerowany szablon>\n\n"
+    "## Braki\n<lista punktowana, każdy punkt od \'- \', albo dokładnie "
+    "\'Brak braków.\' jeśli niczego nie brakuje>\n"
 )
+
 
 PROMPT_STRATEG = (
     "Jesteś strategiem contentu dla Forces DC Content Studio (fit-out data "
@@ -595,23 +584,30 @@ async def testowe_wywolanie(katalog_danych: Path) -> AsyncIterator[dict[str, Any
         yield zdarzenie
 
 
-async def uruchom_redaktor(katalog_danych: Path, brief: str) -> AsyncIterator[dict[str, Any]]:
+async def uruchom_redaktor(
+    katalog_danych: Path, brief: str, material: str = ""
+) -> AsyncIterator[dict[str, Any]]:
     """Tryb Redaktor (SPEC 8.2): generuje 3 warianty LI + FB + brief graficzny
-    + braki na podstawie briefu operatora, zapisuje wynik do output/."""
+    + braki na podstawie briefu operatora.
+
+    Zasady stylu, fakty o firmie i posty do kalibracji dostaje wprost
+    w poleceniu — nie szuka ich narzędziami. Zostawiamy tylko podagenta
+    badawczego, bo jego wywołanie ma sens wyłącznie przy tematach o osobach,
+    firmach i wydarzeniach.
+    """
     opcje = zbuduj_opcje(
         katalog_danych,
         PROMPT_REDAKTOR,
         agents={"researcher": SUBAGENT_RESEARCHER},
-        narzedzia=NARZEDZIA_Z_PODAGENTEM,
+        narzedzia=["Agent"],
     )
-    tresc_polecenia = (
-        f"Dzisiejsza data: {date.today().isoformat()}.\n\n"
-        f"Brief od operatora:\n{brief}"
-    )
-    yield {"typ": "status", "tekst": "Czytam zasady stylu i schematy postów…"}
-    async for zdarzenie in _przetworz_zapytanie(
-        opcje, tresc_polecenia, obserwuj_zapis_z_prefiksem="output/"
-    ):
+    czesci = [f"Dzisiejsza data: {date.today().isoformat()}."]
+    if material.strip():
+        czesci.append(f"\n{material.strip()}")
+    czesci.append(f"\n### Brief od operatora\n{brief.strip()}")
+
+    yield {"typ": "status", "tekst": "Piszę warianty…"}
+    async for zdarzenie in _przetworz_zapytanie(opcje, "\n".join(czesci)):
         yield zdarzenie
 
 
