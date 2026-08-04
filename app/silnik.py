@@ -137,6 +137,10 @@ def _zbuduj_zezwalacz(katalog_danych: Path):
 # SDK przerywa pracę po jego przekroczeniu.
 LIMIT_USD_DOMYSLNY = 1.00
 LIMIT_USD_PLAN = 2.00  # plan miesiąca czyta więcej i robi research, ma wyższy sufit
+# Wyciąg z dokumentu robimy raz na dokument, ale wielostronicowy raport potrafi
+# ważyć więcej niż wszystko inne w tej aplikacji razem wzięte — stąd osobny,
+# wyższy sufit. Koszt jest jednorazowy i pokazywany operatorce przed kliknięciem.
+LIMIT_USD_WYCIAG = 1.50
 
 # Ile tur agenta wolno wykonać. Bez tego zapętlony agent (np. gdy zapis
 # pliku raz za razem się nie udaje) potrafi spalić limit w całości.
@@ -300,8 +304,11 @@ PROMPT_STRATEG = (
     "2. Użyj podagenta `researcher` (narzędzie Agent, subagent_type="
     "'researcher'), żeby zebrać wydarzenia z branży data center w Norwegii "
     "z ostatnich ~30 dni oraz zbliżające się wydarzenia branżowe.\n"
-    "3. Sprawdź katalog `artykuly/` — wgrane przez operatora artykuły i raporty "
-    "źródłowe. Tematy z tych dokumentów traktuj na równi z newsami z sieci.\n"
+    "3. Przeczytaj `artykuly/wyciagi/*.md` — to gotowe wyciągi z artykułów "
+    "i raportów wgranych przez operatora: fakty, liczby i zaproponowane "
+    "tematy. Traktuj je na równi z newsami z sieci i sięgaj po nie w pierwszej "
+    "kolejności; same pliki w `artykuly/` czytaj tylko wtedy, gdy dokument "
+    "nie ma jeszcze wyciągu.\n"
     "4. Przeczytaj materiały z firmy: input-firmowy/ dla wskazanego miesiąca "
     "ORAZ dla miesiąca poprzedniego.\n"
     "5. Przejrzyj korpus/linkedin/ i wyklucz tematy poruszane w ostatnich "
@@ -677,6 +684,63 @@ async def popraw_wariant(
 
     yield {"typ": "status", "tekst": "Poprawiam tekst…"}
     async for zdarzenie in _przetworz_zapytanie(opcje, "\n".join(czesci)):
+        yield zdarzenie
+
+
+PROMPT_WYCIAG = (
+    "Jesteś researcherem contentowym Forces DC (fit-out data center, region "
+    "nordycki). Dostajesz jeden dokument — artykuł, raport branżowy albo "
+    "notatkę — wgrany przez operatorkę. Przeczytaj go w całości narzędziem "
+    f"Read i zrób z niego wyciąg do dalszej pracy nad treścią. {GRANICA_NDA} "
+    f"{ZAKAZ_TRESCI_PRAWNYCH}\n\n"
+    "Piszesz po polsku, nawet jeśli dokument jest po angielsku albo norwesku.\n\n"
+    "Zwróć DOKŁADNIE takie sekcje, w tej kolejności, i nic poza nimi:\n\n"
+    "## O czym jest\n"
+    "Dwa–trzy zdania: co to za dokument, kto go wydał, z kiedy pochodzi.\n\n"
+    "## Fakty i liczby\n"
+    "Lista konkretów, które da się zacytować w poście: dane liczbowe, daty, "
+    "nazwy instytucji, trendy. Przy każdym podaj, skąd w dokumencie pochodzi "
+    "(rozdział, strona albo cytat). Nie zaokrąglaj i nie przeliczaj liczb — "
+    "przepisz je tak, jak są. Jeśli dokument czegoś nie podaje, nie zgaduj.\n\n"
+    "## Tematy na posty dla Forces DC\n"
+    "3–6 zajawek: konkretny kąt, z którego Forces DC może się do tego odnieść "
+    "ze swojej perspektywy — wykonawcy fit-outu i dostawcy zespołów. Każda "
+    "zajawka to jedno zdanie tematu plus jedno zdanie, dlaczego akurat "
+    "Forces DC ma tu coś do powiedzenia. Odrzucaj tematy, w których firma "
+    "byłaby tylko komentatorem cudzych newsów.\n\n"
+    "## Czego tu nie ma\n"
+    "Czego w dokumencie zabrakło, a przydałoby się do postów — żeby "
+    "operatorka wiedziała, o co dopytać w firmie.\n\n"
+    "Nie streszczaj dokumentu zdanie po zdaniu i nie przepisuj całych "
+    "akapitów. Wyciąg ma być krótszy niż dokument i ma się nadawać do "
+    "wielokrotnego użycia."
+)
+
+
+async def zrob_wyciag_z_dokumentu(
+    katalog_danych: Path, sciezka_wzgledna: str
+) -> AsyncIterator[dict[str, Any]]:
+    """Jednorazowo czyta wgrany dokument i zwraca z niego wyciąg.
+
+    Płacimy za przeczytanie dokumentu raz, przy wgraniu, a nie przy każdym
+    poście: wyciąg ma kilka kilobajtów i to on trafia potem do redaktora
+    i do planu. Bez tego albo dokument nie jest w ogóle używany, albo każdy
+    post ciągnie za sobą cały raport.
+    """
+    opcje = zbuduj_opcje(
+        katalog_danych,
+        PROMPT_WYCIAG,
+        narzedzia=["Read"],
+        limit_usd=LIMIT_USD_WYCIAG,
+        maks_tur=8,
+    )
+    polecenie = (
+        f"Dokument do przeczytania: `{sciezka_wzgledna}` (ścieżka względem "
+        "katalogu roboczego). Przeczytaj go narzędziem Read i zwróć wyciąg "
+        "w opisanym formacie."
+    )
+    yield {"typ": "status", "tekst": "Czytam dokument…"}
+    async for zdarzenie in _przetworz_zapytanie(opcje, polecenie):
         yield zdarzenie
 
 

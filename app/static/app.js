@@ -261,6 +261,25 @@ function renderujPosty() {
         style="width:100%;margin-top:0.5rem"
         placeholder="Opisz temat posta…"
       ></textarea>
+      <details class="karta karta-zrodla" id="karta-zrodla">
+        <summary>
+          <strong>Materiał źródłowy</strong>
+          <span class="szczegoly">nieobowiązkowe</span>
+        </summary>
+        <p class="szczegoly">
+          Jeśli post ma się opierać na artykule albo raporcie, wklej tutaj sam
+          fragment, który ma znaczenie — dwa, trzy akapity. Nie wklejaj całego
+          dokumentu: asystent nie napisze przez to lepszego posta, a każdy
+          dodatkowy tysiąc znaków podnosi koszt.
+        </p>
+        <textarea
+          id="pole-zrodla"
+          rows="6"
+          style="width:100%;margin-top:0.5rem"
+          placeholder="Wklej fragment artykułu, raportu albo notatki…"
+        ></textarea>
+        <p class="szczegoly" id="licznik-zrodla">0 znaków</p>
+      </details>
       <div style="margin-top:0.75rem">
         <button class="przycisk-glowny" id="przycisk-generuj">Generuj</button>
       </div>
@@ -270,6 +289,7 @@ function renderujPosty() {
     <div id="historia-postow"></div>
   `;
   document.getElementById("przycisk-generuj").addEventListener("click", uruchomRedaktora);
+  podepnijPoleZrodla();
 
   if (briefZPlanu) {
     document.getElementById("pole-briefu").value = briefZPlanu;
@@ -277,6 +297,51 @@ function renderujPosty() {
   }
 
   wczytajHistoriePostow();
+}
+
+// Wklejony materiał przeżywa przełączenie zakładki i odświeżenie strony.
+// Bez tego kilka akapitów przepisanych z raportu przepadało przy jednym
+// kliknięciu w menu — a to najbardziej pracochłonna rzecz na tym ekranie.
+const KLUCZ_ZRODLA = "forces-dc:material-zrodlowy";
+
+function podepnijPoleZrodla() {
+  const pole = document.getElementById("pole-zrodla");
+  const licznik = document.getElementById("licznik-zrodla");
+  const karta = document.getElementById("karta-zrodla");
+
+  const odswiez = () => {
+    const znaki = pole.value.trim().length;
+    licznik.textContent = znaki
+      ? `${znaki.toLocaleString("pl-PL")} znaków — trafi do asystenta razem z tematem`
+      : "0 znaków";
+    licznik.classList.toggle("licznik-ostrzegawczy", znaki > 12000);
+    if (znaki > 12000) {
+      licznik.textContent =
+        `${znaki.toLocaleString("pl-PL")} znaków — to więcej, niż asystent weźmie ` +
+        "pod uwagę (12 000). Zostaw sam fragment, który ma znaczenie.";
+    }
+  };
+
+  try {
+    const zapamietane = localStorage.getItem(KLUCZ_ZRODLA);
+    if (zapamietane) {
+      pole.value = zapamietane;
+      karta.open = true;
+    }
+  } catch {
+    // Prywatne okno przeglądarki blokuje localStorage — pole po prostu
+    // startuje puste, nic się nie psuje.
+  }
+
+  odswiez();
+  pole.addEventListener("input", () => {
+    odswiez();
+    try {
+      localStorage.setItem(KLUCZ_ZRODLA, pole.value);
+    } catch {
+      /* jak wyżej */
+    }
+  });
 }
 
 // Lista wcześniej wygenerowanych postów, czytana z dysku. Ekran odbudowuje
@@ -376,8 +441,50 @@ const ZNAKOW_PRZED_OBCIECIEM = 200;
 // przez grafika. Zamieniamy tylko pogrubienie — kolejność ma znaczenie:
 // najpierw ucieczka HTML, potem znaczniki, żeby treść nie mogła wstrzyknąć
 // własnego HTML-a.
+// Kolejność ma znaczenie: najpierw uciekamy wszystkie znaki specjalne, dopiero
+// potem wstawiamy własne znaczniki. Odwrotnie byłaby dziura na wstrzyknięcie
+// HTML-a z treści wygenerowanej przez model albo wklejonej przez operatorkę.
 function prostyMarkdown(tekst) {
-  return escapeHtml(tekst).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+  const wiersze = escapeHtml(tekst || "").split("\n");
+  const wynik = [];
+  let wLiscie = false;
+
+  const zamknijListe = () => {
+    if (wLiscie) {
+      wynik.push("</ul>");
+      wLiscie = false;
+    }
+  };
+
+  for (const wiersz of wiersze) {
+    const tresc = wiersz.trim();
+    const pogrubione = (fragment) => fragment.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+
+    if (!tresc) {
+      zamknijListe();
+      continue;
+    }
+    const naglowek = tresc.match(/^(#{1,4})\s+(.*)$/);
+    if (naglowek) {
+      zamknijListe();
+      const poziom = Math.min(naglowek[1].length + 2, 5);
+      wynik.push(`<h${poziom}>${pogrubione(naglowek[2])}</h${poziom}>`);
+      continue;
+    }
+    const punkt = tresc.match(/^[-*]\s+(.*)$/);
+    if (punkt) {
+      if (!wLiscie) {
+        wynik.push("<ul>");
+        wLiscie = true;
+      }
+      wynik.push(`<li>${pogrubione(punkt[1])}</li>`);
+      continue;
+    }
+    zamknijListe();
+    wynik.push(`<p>${pogrubione(tresc)}</p>`);
+  }
+  zamknijListe();
+  return wynik.join("");
 }
 
 function podgladZLiniaObciecia(tresc) {
@@ -908,6 +1015,7 @@ async function strumieniujSSE(odpowiedz, obslugaZdarzenia) {
 
 async function uruchomRedaktora() {
   const brief = document.getElementById("pole-briefu").value.trim();
+  const materialZrodlowy = document.getElementById("pole-zrodla")?.value.trim() || "";
   const przycisk = document.getElementById("przycisk-generuj");
   const log = document.getElementById("log-redaktora");
   const wynik = document.getElementById("wynik-redaktora");
@@ -944,7 +1052,7 @@ async function uruchomRedaktora() {
     odpowiedz = await fetch("/api/redaktor", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ brief }),
+      body: JSON.stringify({ brief, material_zrodlowy: materialZrodlowy }),
     });
   } catch (blad) {
     wynik.innerHTML = `<div class="karta"><p class="instrukcja-naprawy">Nie udało się połączyć z serwerem (${escapeHtml(blad.message)}).</p></div>`;
@@ -2152,8 +2260,27 @@ async function wczytajArtykuly() {
             <div>
               ${escapeHtml(wpis.plik)}
               <span class="szczegoly">${wpis.rozmiar_kb} KB${wpis.czytelny ? "" : " · asystent tego nie odczyta"}</span>
+              ${wpis.ma_wyciag ? `<span class="odznaka-wybrany">przeczytany</span>` : ""}
+              <div class="szczegoly">${
+                wpis.ma_wyciag
+                  ? "Asystent korzysta z tego dokumentu przy planowaniu i pisaniu."
+                  : "Asystent jeszcze go nie przeczytał — kliknij „Przeczytaj”."
+              }</div>
+              <div class="wyciag-dokumentu" data-wyciag-dla="${escapeHtml(wpis.plik)}" hidden></div>
             </div>
-            <button class="przycisk-drugorzedny maly" data-usun-artykul="${escapeHtml(wpis.plik)}">usuń</button>
+            <div class="pasek-narzedzi" style="margin:0">
+              ${
+                wpis.czytelny
+                  ? `<button class="przycisk-drugorzedny maly" data-przeczytaj-artykul="${escapeHtml(wpis.plik)}">${wpis.ma_wyciag ? "Przeczytaj od nowa" : "Przeczytaj"}</button>`
+                  : ""
+              }
+              ${
+                wpis.ma_wyciag
+                  ? `<button class="przycisk-drugorzedny maly" data-pokaz-wyciag="${escapeHtml(wpis.plik)}">Co z tego wynika</button>`
+                  : ""
+              }
+              <button class="przycisk-drugorzedny maly" data-usun-artykul="${escapeHtml(wpis.plik)}">usuń</button>
+            </div>
           </li>`
         )
         .join("")
@@ -2163,10 +2290,17 @@ async function wczytajArtykuly() {
     <div class="karta">
       <strong>Artykuły i dokumenty</strong>
       <p class="szczegoly">
-        Wgraj artykuły, raporty albo notatki, z których asystent ma korzystać
-        przy pisaniu. Zostają na stałe — nie trzeba wgrywać ich ponownie po
-        zamknięciu aplikacji. Obsługiwane: PDF, TXT, MD, CSV, HTML
-        (plik z Worda zapisz najpierw jako PDF).
+        Wgraj artykuły, raporty albo notatki. Zostają na stałe — nie trzeba
+        wgrywać ich ponownie po zamknięciu aplikacji. Obsługiwane: PDF, TXT,
+        MD, CSV, HTML (plik z Worda zapisz najpierw jako PDF).
+      </p>
+      <p class="szczegoly">
+        <strong>Jak to działa:</strong> po wgraniu kliknij „Przeczytaj”.
+        Asystent przechodzi dokument raz i wypisuje z niego fakty, liczby
+        i tematy na posty. Od tej pory korzysta z tego przy planowaniu miesiąca
+        i przy pisaniu — bez wracania do całego pliku. Czytanie jest płatne,
+        dlatego dzieje się na kliknięcie, a nie samo z siebie; wielostronicowy
+        raport to zwykle kilkadziesiąt centów, jednorazowo.
       </p>
       <ul class="lista-materialow">${lista}</ul>
       <div class="pasek-narzedzi" style="margin:0.75rem 0 0">
@@ -2185,6 +2319,80 @@ async function wczytajArtykuly() {
       wczytajArtykuly();
     });
   });
+  kontener.querySelectorAll("[data-przeczytaj-artykul]").forEach((przycisk) => {
+    przycisk.addEventListener("click", () => przeczytajArtykul(przycisk));
+  });
+  kontener.querySelectorAll("[data-pokaz-wyciag]").forEach((przycisk) => {
+    przycisk.addEventListener("click", () => pokazWyciag(przycisk));
+  });
+}
+
+// Jednorazowe przeczytanie dokumentu. Wyciąg zapisuje backend, więc przerwane
+// czytanie nie zostawia operatorki z niczym poza komunikatem.
+async function przeczytajArtykul(przycisk) {
+  const nazwa = przycisk.dataset.przeczytajArtykul;
+  const obszar = document.querySelector(`[data-wyciag-dla="${CSS.escape(nazwa)}"]`);
+  const oryginalnyTekst = przycisk.textContent;
+  przycisk.disabled = true;
+  przycisk.textContent = "Czytam…";
+  obszar.hidden = false;
+  obszar.innerHTML = `<div class="log-przebiegu"><div class="wpis">Czytam dokument…</div></div>`;
+
+  let odpowiedz;
+  try {
+    odpowiedz = await fetch(`/api/artykuly/${encodeURIComponent(nazwa)}/wyciag`, { method: "POST" });
+  } catch (blad) {
+    obszar.innerHTML = `<p class="instrukcja-naprawy">Nie udało się połączyć z serwerem (${escapeHtml(blad.message)}).</p>`;
+    przycisk.disabled = false;
+    przycisk.textContent = oryginalnyTekst;
+    return;
+  }
+
+  if ((odpowiedz.headers.get("content-type") || "").includes("application/json")) {
+    const dane = await odpowiedz.json();
+    obszar.innerHTML = `<p class="instrukcja-naprawy">${escapeHtml(dane.blad || "Nie udało się przeczytać dokumentu.")}</p>`;
+    przycisk.disabled = false;
+    przycisk.textContent = oryginalnyTekst;
+    return;
+  }
+
+  await strumieniujSSE(odpowiedz, (zdarzenie) => {
+    if (zdarzenie.typ === "status") {
+      obszar.innerHTML = `<div class="log-przebiegu"><div class="wpis">${escapeHtml(zdarzenie.tekst)}</div></div>`;
+    } else if (zdarzenie.typ === "blad") {
+      obszar.innerHTML = `<p class="instrukcja-naprawy">${escapeHtml(zdarzenie.tekst)}</p>`;
+    } else if (zdarzenie.typ === "wynik") {
+      dopiszKoszt(zdarzenie.koszt_usd);
+      przycisk.disabled = false;
+      przycisk.textContent = oryginalnyTekst;
+      if (zdarzenie.blad_wyciagu) {
+        obszar.innerHTML = `<p class="instrukcja-naprawy">${escapeHtml(zdarzenie.blad_wyciagu)}</p>`;
+      } else {
+        obszar.innerHTML = `<div class="karta">${prostyMarkdown(zdarzenie.wyciag)}</div>`;
+        wczytajArtykuly();
+      }
+    }
+  });
+}
+
+async function pokazWyciag(przycisk) {
+  const nazwa = przycisk.dataset.pokazWyciag;
+  const obszar = document.querySelector(`[data-wyciag-dla="${CSS.escape(nazwa)}"]`);
+  if (!obszar.hidden) {
+    obszar.hidden = true;
+    return;
+  }
+  obszar.hidden = false;
+  obszar.innerHTML = `<p class="placeholder">Wczytuję…</p>`;
+  try {
+    const odpowiedz = await fetch(`/api/artykuly/${encodeURIComponent(nazwa)}/wyciag`);
+    const dane = await odpowiedz.json();
+    obszar.innerHTML = odpowiedz.ok
+      ? `<div class="karta">${prostyMarkdown(dane.wyciag)}</div>`
+      : `<p class="instrukcja-naprawy">${escapeHtml(dane.blad)}</p>`;
+  } catch (blad) {
+    obszar.innerHTML = `<p class="instrukcja-naprawy">Nie udało się wczytać (${escapeHtml(blad.message)}).</p>`;
+  }
 }
 
 async function wgrajArtykul() {

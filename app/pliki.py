@@ -62,8 +62,18 @@ def policz_luki(tresc: str) -> int:
     return sum(tresc.count(znacznik) for znacznik in ZNACZNIKI_LUK)
 
 
+# Sufit na wklejony materiał źródłowy. Ok. 12 tys. znaków to jakieś 3 tys.
+# tokenów, czyli mniej niż grosz — a jednocześnie mniej więcej tyle, ile
+# człowiek jest w stanie sensownie wybrać z raportu. Wyżej rośnie i rachunek,
+# i ryzyko, że model utonie w treści zamiast napisać post.
+LIMIT_ZNAKOW_MATERIALU = 12_000
+
+
 def zbuduj_material_dla_redaktora(
-    katalog_danych: Path, limit_postow: int = 4, limit_znakow_postu: int = 1200
+    katalog_danych: Path,
+    limit_postow: int = 4,
+    limit_znakow_postu: int = 1200,
+    material_zrodlowy: str = "",
 ) -> str:
     """Komplet, którego redaktor potrzebuje do napisania posta: zasady stylu,
     fakty o firmie i kilka postów korpusu do kalibracji.
@@ -101,7 +111,45 @@ def zbuduj_material_dla_redaktora(
             "BRAK — korpus jest pusty. Napisz post na ogólnym wyczuciu stylu "
             "branżowego i zgłoś ten brak w sekcji Braki."
         )
+
+    blok_wyciagow = zbuduj_blok_wyciagow(katalog_danych)
+    if blok_wyciagow:
+        czesci.append(blok_wyciagow)
+
+    blok_zrodla = zbuduj_blok_materialu_zrodlowego(material_zrodlowy)
+    if blok_zrodla:
+        czesci.append(blok_zrodla)
     return "\n\n".join(czesci)
+
+
+def zbuduj_blok_materialu_zrodlowego(material_zrodlowy: str) -> str:
+    """Fragment artykułu wklejony przez operatorkę, przycięty do sufitu.
+
+    Świadomie nie czytamy tu plików z `artykuly/`: wyciągnięty automatem
+    początek raportu to zwykle strona tytułowa i spis treści — płatny śmieć.
+    Operatorka wkleja te dwa akapity, które faktycznie mają znaczenie.
+    """
+    tresc = material_zrodlowy.strip()
+    if not tresc:
+        return ""
+
+    przyciete = len(tresc) > LIMIT_ZNAKOW_MATERIALU
+    if przyciete:
+        tresc = tresc[:LIMIT_ZNAKOW_MATERIALU].rsplit(" ", 1)[0]
+
+    ogon = (
+        "\n\n[Materiał był dłuższy i został przycięty — pracuj na tym fragmencie "
+        "i zaznacz w sekcji Braki, jeśli czegoś w nim brakuje.]"
+        if przyciete
+        else ""
+    )
+    return (
+        "### Materiał źródłowy od operatora\n"
+        "Fragment artykułu, raportu albo notatki, na którym ma się opierać post. "
+        "Nie przepisuj go — wyciągnij z niego to, co istotne dla Forces DC, "
+        "i nie dopisuj liczb ani faktów, których tu nie ma.\n\n"
+        f"{tresc}{ogon}"
+    )
 
 
 def wczytaj_zasady_stylu(katalog_danych: Path, limit_znakow: int = 6000) -> str:
@@ -699,6 +747,7 @@ def lista_artykulow(katalog_danych: Path) -> list[dict[str, object]]:
                 "plik": plik.name,
                 "rozmiar_kb": max(1, round(plik.stat().st_size / 1024)),
                 "czytelny": plik.suffix.lower() in ROZSZERZENIA_ARTYKULOW,
+                "ma_wyciag": sciezka_wyciagu(katalog_danych, plik.name).is_file(),
             }
         )
     return sorted(wpisy, key=lambda wpis: str(wpis["plik"]).lower())
@@ -706,6 +755,86 @@ def lista_artykulow(katalog_danych: Path) -> list[dict[str, object]]:
 
 def sciezka_artykulu(katalog_danych: Path, nazwa_pliku: str) -> Path:
     return _katalog_artykulow(katalog_danych) / bezpieczna_nazwa_pliku(nazwa_pliku)
+
+
+# --- Wyciągi z wgranych dokumentów ---
+#
+# Dokument czytamy raz, przy wgraniu, i zapisujemy z niego wyciąg: fakty,
+# liczby i tematy na posty. Potem to wyciąg — kilka kilobajtów zamiast
+# kilkuset — trafia do redaktora i do planu. Inaczej albo dokument leży
+# nieużywany, albo każdy post ciągnie za sobą cały raport.
+
+PODKATALOG_WYCIAGOW = "wyciagi"
+# Sufit na wszystkie wyciągi razem doklejane do jednego polecenia. Więcej
+# dokumentów nie może po cichu podnieść ceny każdego posta.
+LIMIT_ZNAKOW_WYCIAGOW = 8_000
+
+
+def _katalog_wyciagow(katalog_danych: Path) -> Path:
+    return _katalog_artykulow(katalog_danych) / PODKATALOG_WYCIAGOW
+
+
+def sciezka_wyciagu(katalog_danych: Path, nazwa_pliku: str) -> Path:
+    """Wyciąg leży obok dokumentu, w podkatalogu, pod tą samą nazwą z `.md`."""
+    bezpieczna = bezpieczna_nazwa_pliku(nazwa_pliku)
+    return _katalog_wyciagow(katalog_danych) / f"{Path(bezpieczna).stem}.md"
+
+
+def zapisz_wyciag(katalog_danych: Path, nazwa_pliku: str, tresc: str) -> Path:
+    sciezka = sciezka_wyciagu(katalog_danych, nazwa_pliku)
+    sciezka.parent.mkdir(parents=True, exist_ok=True)
+    naglowek = f"# Wyciąg z dokumentu: {bezpieczna_nazwa_pliku(nazwa_pliku)}\n\n"
+    sciezka.write_text(naglowek + tresc.strip() + "\n", encoding="utf-8")
+    return sciezka
+
+
+def wczytaj_wyciag(katalog_danych: Path, nazwa_pliku: str) -> str:
+    sciezka = sciezka_wyciagu(katalog_danych, nazwa_pliku)
+    return sciezka.read_text(encoding="utf-8") if sciezka.is_file() else ""
+
+
+def zbuduj_blok_wyciagow(katalog_danych: Path, limit_znakow: int = LIMIT_ZNAKOW_WYCIAGOW) -> str:
+    """Wyciągi ze wszystkich przeczytanych dokumentów, przycięte do sufitu.
+
+    Od najnowszego, bo świeżo wgrany raport jest zwykle tym, o którym
+    operatorka właśnie myśli.
+    """
+    katalog = _katalog_wyciagow(katalog_danych)
+    if not katalog.is_dir():
+        return ""
+
+    pliki_wyciagow = sorted(
+        (p for p in katalog.glob("*.md") if p.is_file()),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+
+    zebrane: list[str] = []
+    zostalo = limit_znakow
+    pominiete = 0
+    for plik in pliki_wyciagow:
+        tresc = plik.read_text(encoding="utf-8").strip()
+        if len(tresc) > zostalo:
+            pominiete += 1
+            continue
+        zebrane.append(tresc)
+        zostalo -= len(tresc)
+
+    if not zebrane:
+        return ""
+
+    ogon = (
+        f"\n\n[Pominięto {pominiete} wyciąg(i) — nie zmieściły się. "
+        "Pracuj na tym, co powyżej.]"
+        if pominiete
+        else ""
+    )
+    return (
+        "### Wyciągi z wgranych dokumentów\n"
+        "Fakty, liczby i tematy wyciągnięte z artykułów i raportów wgranych "
+        "przez operatorkę. Możesz się na nie powoływać, ale nie dopisuj liczb "
+        "ani nazw, których tu nie ma.\n\n" + "\n\n---\n\n".join(zebrane) + ogon
+    )
 
 
 def przygotuj_miejsce_na_artykul(katalog_danych: Path, nazwa_pliku: str) -> Path:

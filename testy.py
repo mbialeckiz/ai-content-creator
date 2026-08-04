@@ -241,6 +241,123 @@ def test_przerwane_generowanie_zapisuje_czesc() -> None:
     sprawdz("wynik oznaczony jako częściowy", wynik.get("czesciowy") is True)
 
 
+def test_material_zrodlowy_od_operatora() -> None:
+    katalog = katalog_testowy()
+    sprawdz("puste pole nie dokłada nic do polecenia",
+            pliki.zbuduj_blok_materialu_zrodlowego("   \n  ") == "")
+
+    krotki = pliki.zbuduj_blok_materialu_zrodlowego("Norweskie centra danych rosna o 20% rocznie.")
+    sprawdz("wklejony fragment trafia do polecenia", "rosna o 20% rocznie" in krotki)
+    sprawdz("fragment jest opisany dla modelu", "Materiał źródłowy od operatora" in krotki)
+    sprawdz("model dostaje zakaz dopisywania liczb", "nie dopisuj liczb" in krotki)
+
+    dlugi = pliki.zbuduj_blok_materialu_zrodlowego("slowo " * 5000)
+    sprawdz("zbyt długi materiał jest przycięty",
+            len(dlugi) < 6000 + pliki.LIMIT_ZNAKOW_MATERIALU,
+            f"długość bloku: {len(dlugi)}")
+    sprawdz("przycięcie jest zgłoszone modelowi", "został przycięty" in dlugi)
+
+    # Materiał musi trafić do tej samej paczki, co zasady stylu i korpus.
+    calosc = pliki.zbuduj_material_dla_redaktora(katalog, material_zrodlowy="Raport NDI 2026.")
+    sprawdz("materiał wchodzi do paczki dla redaktora", "Raport NDI 2026." in calosc)
+    bez = pliki.zbuduj_material_dla_redaktora(katalog)
+    sprawdz("bez wklejonego materiału paczka go nie zawiera",
+            "Materiał źródłowy od operatora" not in bez)
+
+
+def test_wyciagi_z_dokumentow() -> None:
+    katalog = katalog_testowy()
+    (katalog / "artykuly").mkdir(parents=True, exist_ok=True)
+    (katalog / "artykuly" / "raport.pdf").write_bytes(b"%PDF-1.4 udawany plik")
+
+    lista = pliki.lista_artykulow(katalog)
+    sprawdz("wgrany dokument jest na liście", len(lista) == 1, f"jest {len(lista)}")
+    sprawdz("dokument bez wyciągu jest tak oznaczony", lista[0]["ma_wyciag"] is False)
+    sprawdz("brak wyciągu nie dokłada nic do paczki dla redaktora",
+            "Wyciągi z wgranych dokumentów" not in pliki.zbuduj_material_dla_redaktora(katalog))
+
+    pliki.zapisz_wyciag(
+        katalog, "raport.pdf",
+        "## Fakty i liczby\n- Norweskie centra danych: +18% mocy w 2025.\n",
+    )
+    lista = pliki.lista_artykulow(katalog)
+    sprawdz("po przeczytaniu dokument jest oznaczony jako przeczytany",
+            lista[0]["ma_wyciag"] is True)
+    sprawdz("wyciąg da się odczytać z powrotem",
+            "+18% mocy" in pliki.wczytaj_wyciag(katalog, "raport.pdf"))
+    sprawdz("wyciąg trafia do paczki dla redaktora",
+            "+18% mocy" in pliki.zbuduj_material_dla_redaktora(katalog))
+    sprawdz("podkatalog wyciągów nie pokazuje się jako dokument",
+            len(pliki.lista_artykulow(katalog)) == 1)
+
+    # Nazwa pliku przychodzi z przeglądarki — nie może wyprowadzić zapisu.
+    zloliwa = pliki.sciezka_wyciagu(katalog, "../../etc/passwd")
+    sprawdz("nazwa z ../ nie wychodzi poza katalog wyciągów",
+            (katalog / "artykuly" / "wyciagi") in zloliwa.parents, f"wyszło: {zloliwa}")
+
+
+def test_wyciagi_maja_sufit_dlugosci() -> None:
+    katalog = katalog_testowy()
+    (katalog / "artykuly").mkdir(parents=True, exist_ok=True)
+    for numer in range(6):
+        pliki.zapisz_wyciag(katalog, f"raport-{numer}.pdf", "tresc wyciagu. " * 400)
+
+    blok = pliki.zbuduj_blok_wyciagow(katalog)
+    sprawdz("wyciągi razem nie przekraczają sufitu",
+            len(blok) < pliki.LIMIT_ZNAKOW_WYCIAGOW + 1500, f"długość: {len(blok)}")
+    sprawdz("pominięte wyciągi są zgłoszone modelowi", "Pominięto" in blok)
+
+
+def test_usuniecie_dokumentu_kasuje_wyciag() -> None:
+    from fastapi.testclient import TestClient
+
+    katalog = katalog_testowy()
+    (katalog / "artykuly").mkdir(parents=True, exist_ok=True)
+    (katalog / "artykuly" / "raport.pdf").write_bytes(b"%PDF-1.4 udawany plik")
+    pliki.zapisz_wyciag(katalog, "raport.pdf", "## Fakty i liczby\n- cokolwiek\n")
+
+    pierwotny = main.katalog_danych
+    main.katalog_danych = lambda: katalog
+    try:
+        klient = TestClient(main.app)
+        odpowiedz = klient.delete("/api/artykuly/raport.pdf")
+    finally:
+        main.katalog_danych = pierwotny
+
+    sprawdz("usunięcie dokumentu się powiodło", odpowiedz.status_code == 200)
+    sprawdz("wyciąg nie zostaje sierotą po usunięciu dokumentu",
+            not pliki.sciezka_wyciagu(katalog, "raport.pdf").is_file())
+    sprawdz("po usunięciu wyciąg nie trafia już do postów",
+            "Wyciągi z wgranych dokumentów" not in pliki.zbuduj_material_dla_redaktora(katalog))
+
+
+def test_nda_sprawdzane_takze_we_wklejonym_materiale() -> None:
+    from fastapi.testclient import TestClient
+
+    katalog = katalog_testowy()
+    (katalog / "baza-wiedzy" / "forces-dc-fakty.md").write_text(
+        "## Czego NIE wolno publikować\n\n- **Hyperscaler Nordics AS** — przykład\n",
+        encoding="utf-8",
+    )
+    pierwotny = main.katalog_danych
+    main.katalog_danych = lambda: katalog
+    try:
+        klient = TestClient(main.app)
+        odpowiedz = klient.post(
+            "/api/redaktor",
+            json={
+                "brief": "Post o przygotowaniu zespolu",
+                "material_zrodlowy": "Wedlug raportu Hyperscaler Nordics AS buduje nowy obiekt.",
+            },
+        )
+    finally:
+        main.katalog_danych = pierwotny
+
+    sprawdz("nazwa objęta NDA wklejona w materiał jest blokowana",
+            odpowiedz.json().get("zablokowane_nda") is True,
+            f"odpowiedź: {odpowiedz.status_code} {odpowiedz.text[:120]}")
+
+
 async def _zbierz_sse(strumien) -> list[dict]:
     zdarzenia = []
     async for kawalek in strumien:

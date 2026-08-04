@@ -20,3 +20,8 @@ dane/korpus/linkedin/*
 dane/input-firmowy/*
 !dane/korpus/linkedin/.gitkeep
 !dane/input-firmowy/.gitkeep
+
+# Dokumenty wgrane przez operatorkę i wyciągi z nich. To materiały klienta —
+# raporty branżowe, notatki — i nie mają czego szukać w repozytorium kodu.
+dane/artykuly/*
+!dane/artykuly/.gitkeep

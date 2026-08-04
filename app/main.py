@@ -165,9 +165,11 @@ def _blokada_nda_lub_none(tekst: str) -> JSONResponse | None:
 
 class PolecenieRedaktora(BaseModel):
     brief: str
+    # Fragment artykułu lub raportu wklejony ręcznie przez operatorkę.
+    material_zrodlowy: str = ""
 
 
-async def _strumien_redaktora(brief: str) -> AsyncIterator[str]:
+async def _strumien_redaktora(brief: str, material_zrodlowy: str = "") -> AsyncIterator[str]:
     """Zbiera treść od redaktora i to backend zapisuje plik, nie agent.
 
     Dzięki temu przerwany przebieg (np. po przekroczeniu limitu kosztu) nie
@@ -175,7 +177,7 @@ async def _strumien_redaktora(brief: str) -> AsyncIterator[str]:
     dostaje gotowe warianty zamiast samego komunikatu o błędzie.
     """
     katalog = katalog_danych()
-    material = pliki.zbuduj_material_dla_redaktora(katalog)
+    material = pliki.zbuduj_material_dla_redaktora(katalog, material_zrodlowy=material_zrodlowy)
     zebrane: list[str] = []
     przerwane = False
 
@@ -216,11 +218,16 @@ async def api_redaktor(polecenie: PolecenieRedaktora) -> JSONResponse | Streamin
     if not brief:
         return JSONResponse({"blad": "Brief nie może być pusty — opisz, o czym ma być post."}, status_code=400)
 
-    blokada = _blokada_nda_lub_none(brief)
+    # Wklejony materiał źródłowy sprawdzamy tak samo jak brief — nazwa objęta
+    # NDA równie łatwo trafi tu przez wklejenie, co przez wpisanie.
+    blokada = _blokada_nda_lub_none(f"{brief}\n{polecenie.material_zrodlowy}")
     if blokada:
         return blokada
 
-    return StreamingResponse(_strumien_redaktora(brief), media_type="text/event-stream")
+    return StreamingResponse(
+        _strumien_redaktora(brief, polecenie.material_zrodlowy),
+        media_type="text/event-stream",
+    )
 
 
 class WiadomoscAsystenta(BaseModel):
@@ -869,11 +876,14 @@ async def api_wgraj_artykul(plik: UploadFile = File(...)) -> JSONResponse:
 
 @app.delete("/api/artykuly/{nazwa_pliku}", response_model=None)
 async def api_usun_artykul(nazwa_pliku: str) -> JSONResponse:
-    sciezka = pliki.sciezka_artykulu(katalog_danych(), nazwa_pliku)
+    katalog = katalog_danych()
+    sciezka = pliki.sciezka_artykulu(katalog, nazwa_pliku)
     if not sciezka.is_file():
         return JSONResponse({"blad": "Nie znaleźliśmy tego dokumentu."}, status_code=404)
     try:
         sciezka.unlink()
+        # Wyciąg bez dokumentu byłby sierotą — i dalej trafiałby do postów.
+        pliki.sciezka_wyciagu(katalog, nazwa_pliku).unlink(missing_ok=True)
     except OSError as blad:
         logger.error("Nie udało się usunąć dokumentu %s: %s", sciezka, blad)
         return JSONResponse(
@@ -881,6 +891,65 @@ async def api_usun_artykul(nazwa_pliku: str) -> JSONResponse:
             status_code=500,
         )
     return JSONResponse({"usunieto": True})
+
+
+@app.get("/api/artykuly/{nazwa_pliku}/wyciag", response_model=None)
+async def api_wczytaj_wyciag(nazwa_pliku: str) -> JSONResponse:
+    tresc = pliki.wczytaj_wyciag(katalog_danych(), nazwa_pliku)
+    if not tresc:
+        return JSONResponse(
+            {"blad": "Ten dokument nie został jeszcze przeczytany."}, status_code=404
+        )
+    return JSONResponse({"wyciag": tresc})
+
+
+async def _strumien_wyciagu(nazwa_pliku: str) -> AsyncIterator[str]:
+    katalog = katalog_danych()
+    sciezka = pliki.sciezka_artykulu(katalog, nazwa_pliku)
+    wzgledna = str(sciezka.relative_to(katalog))
+
+    zebrane: list[str] = []
+    async for zdarzenie in silnik.zrob_wyciag_z_dokumentu(katalog, wzgledna):
+        if zdarzenie["typ"] == "fragment":
+            zebrane.append(zdarzenie["tekst"])
+            continue
+        if zdarzenie["typ"] == "wynik":
+            tresc = "".join(zebrane).strip()
+            if not tresc:
+                zdarzenie["blad_wyciagu"] = (
+                    "Asystent nie zwrócił nic z tego dokumentu. Sprawdź, czy plik "
+                    "nie jest skanem bez warstwy tekstowej — z takiego nie da się "
+                    "nic odczytać."
+                )
+            else:
+                try:
+                    pliki.zapisz_wyciag(katalog, nazwa_pliku, tresc)
+                    zdarzenie["wyciag"] = tresc
+                except OSError as blad:
+                    logger.error("Nie udało się zapisać wyciągu z %s: %s", nazwa_pliku, blad)
+                    zdarzenie["blad_wyciagu"] = (
+                        "Wyciąg powstał, ale nie udało się go zapisać — sprawdź, "
+                        "czy folder danych jest dostępny."
+                    )
+        yield _jako_sse(zdarzenie)
+
+
+@app.post("/api/artykuly/{nazwa_pliku}/wyciag", response_model=None)
+async def api_zrob_wyciag(nazwa_pliku: str) -> JSONResponse | StreamingResponse:
+    """Jednorazowe przeczytanie dokumentu: fakty, liczby i tematy na posty.
+
+    Osobny krok, a nie automat przy wgrywaniu — wielostronicowy raport
+    kosztuje realne pieniądze i operatorka ma o tym zdecydować świadomie.
+    """
+    sciezka = pliki.sciezka_artykulu(katalog_danych(), nazwa_pliku)
+    if not sciezka.is_file():
+        return JSONResponse({"blad": "Nie znaleźliśmy tego dokumentu."}, status_code=404)
+    if sciezka.suffix.lower() not in pliki.ROZSZERZENIA_ARTYKULOW:
+        return JSONResponse(
+            {"blad": "Tego formatu asystent nie odczyta — wgraj PDF, TXT, MD, CSV albo HTML."},
+            status_code=400,
+        )
+    return StreamingResponse(_strumien_wyciagu(nazwa_pliku), media_type="text/event-stream")
 
 
 class ZapisMaterialow(BaseModel):

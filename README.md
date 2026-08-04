@@ -89,6 +89,28 @@ zamiast zgadywania. Zweryfikowano względem `claude-agent-sdk==0.2.128`
   wewnątrz generatora `StreamingResponse` FastAPI nie blokuje event loopa,
   osobny wątek/task nie jest potrzebny.
 
+## Wgrane dokumenty — jak trafiają do treści
+
+Artykuły i raporty wgrane na ekranie „Materiały" leżą w `dane/artykuly/`.
+Sam plik nie jest jeszcze używany — dopiero przycisk **„Przeczytaj"**
+przepuszcza go raz przez asystenta i zapisuje wyciąg w
+`dane/artykuly/wyciagi/<nazwa>.md`: fakty, liczby, tematy na posty i lista
+tego, czego w dokumencie zabrakło.
+
+Od tego momentu wyciąg — kilka kilobajtów zamiast kilkuset — trafia
+automatycznie do planu miesiąca i do każdego pisanego posta. Dokumentu nikt
+już nie czyta po raz drugi, więc koszt jest jednorazowy (zmierzone: 0,20 USD
+za notatkę branżową, 3 tury).
+
+Osobno, na ekranie „Posty", jest pole **„Materiał źródłowy"**: miejsce na
+wklejenie konkretnego fragmentu, na którym ma się opierać dany post.
+Przycinane do 12 tys. znaków. To ścieżka dla sytuacji „mam dokładnie ten
+akapit", niezależna od wyciągów.
+
+Wyciąg jest zwykłym plikiem `.md` — można go poprawić ręcznie, a asystent
+będzie korzystał z poprawionej wersji. Usunięcie dokumentu kasuje też jego
+wyciąg.
+
 ## Testy
 
 ```bash

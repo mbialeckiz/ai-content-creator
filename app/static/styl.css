@@ -547,6 +547,75 @@ label {
   background: var(--akcent-tlo);
 }
 
+/* ---------- Wyciąg z wgranego dokumentu ---------- */
+
+.wyciag-dokumentu {
+  margin-top: 0.6rem;
+  max-width: 46rem;
+}
+
+/* Przyciski przy dokumencie trzymamy w jednym rzędzie — „usuń" spadające
+   do drugiej linii wyglądało jak osobny element listy. */
+.lista-materialow li > .pasek-narzedzi {
+  flex-wrap: nowrap;
+  flex-shrink: 0;
+}
+
+.wyciag-dokumentu h3,
+.wyciag-dokumentu h4,
+.wyciag-dokumentu h5 {
+  font-size: 0.95rem;
+  margin: 0.9rem 0 0.3rem;
+}
+
+.wyciag-dokumentu h3:first-child,
+.wyciag-dokumentu h4:first-child {
+  margin-top: 0;
+}
+
+.wyciag-dokumentu p,
+.wyciag-dokumentu li {
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
+/* Wyciąg bywa zagnieżdżony w liście dokumentów, więc jawnie odcinamy się
+   od jej stylów — inaczej punkty tracą kropki i dostają linie oddzielające.
+   Selektor jest dłuższy, niż wyglądałoby to naturalnie, bo `.lista-materialow li`
+   ma tę samą specyficzność i stoi w pliku niżej. */
+.wyciag-dokumentu ul,
+.lista-materialow .wyciag-dokumentu ul {
+  margin: 0.3rem 0 0.3rem 1.1rem;
+  padding-left: 0.4rem;
+  list-style: disc;
+}
+
+.wyciag-dokumentu li,
+.lista-materialow li .wyciag-dokumentu li {
+  display: list-item;
+  justify-content: flex-start;
+  padding: 0.15rem 0;
+  border-bottom: none;
+}
+
+/* ---------- Materiał źródłowy pod polem briefu ---------- */
+
+.karta-zrodla {
+  margin-top: 0.75rem;
+}
+
+.karta-zrodla summary {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  cursor: pointer;
+}
+
+.licznik-ostrzegawczy {
+  color: var(--ostrzezenie);
+  font-weight: 550;
+}
+
 /* ---------- Pusty czat (ekran startowy) ---------- */
 
 .pusty-czat {
