@@ -460,6 +460,17 @@ function elementWynikuPosta(post, sciezkaPliku) {
         <p class="podglad-tresc" style="margin:0.5rem 0">${prostyMarkdown(post.brief_graficzny)}</p>
         <button class="przycisk-drugorzedny" data-kopiuj-brief>Kopiuj dla Sikory</button>
       </div>
+      <div class="karta">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:1rem">
+          <strong>Grafika do posta</strong>
+          <button class="przycisk-glowny" data-zrob-grafike="${idWyniku}">Zrób grafikę</button>
+        </div>
+        <p class="szczegoly">
+          Powstaje z Waszej identyfikacji wizualnej. Hasło dobiera asystent —
+          możesz je poprawić przed pobraniem.
+        </p>
+        <div class="obszar-grafiki" data-grafika-dla="${idWyniku}" hidden></div>
+      </div>
       <div class="karta karta-ostrzegawcza">
         <h3 style="color:var(--ostrzezenie)">Braki</h3>
         ${brakiHtml}
@@ -512,6 +523,12 @@ function podepnijPrzyciskiKopiowania(zakres = document) {
     );
   });
 
+  zakres.querySelectorAll("[data-zrob-grafike]").forEach((przycisk) => {
+    if (przycisk.dataset.podpieto) return;
+    przycisk.dataset.podpieto = "1";
+    przycisk.addEventListener("click", () => zrobGrafike(przycisk));
+  });
+
   zakres.querySelectorAll("[data-popraw]").forEach((przycisk) => {
     if (przycisk.dataset.podpieto) return;
     przycisk.dataset.podpieto = "1";
@@ -527,6 +544,126 @@ function podepnijPrzyciskiKopiowania(zakres = document) {
 
 function kartaWariantuDla(przycisk) {
   return przycisk.closest(".karta-wariantu");
+}
+
+// --- Grafika do posta ---
+
+const daneGrafiki = {};
+
+async function zrobGrafike(przycisk) {
+  const id = przycisk.dataset.zrobGrafike;
+  const wynik = wynikiPostow[id];
+  const obszar = document.querySelector(`[data-grafika-dla="${id}"]`);
+  obszar.hidden = false;
+  obszar.innerHTML = `<div class="log-przebiegu"><div class="wpis">Dobieram hasło…</div></div>`;
+  przycisk.disabled = true;
+
+  let odpowiedz;
+  try {
+    odpowiedz = await fetch("/api/grafika", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ plik: wynik.plik, indeks: 0 }),
+    });
+  } catch (blad) {
+    obszar.innerHTML = `<p class="instrukcja-naprawy">Nie udało się połączyć z serwerem (${escapeHtml(blad.message)}).</p>`;
+    przycisk.disabled = false;
+    return;
+  }
+
+  if ((odpowiedz.headers.get("content-type") || "").includes("application/json")) {
+    const dane = await odpowiedz.json();
+    obszar.innerHTML = `<p class="instrukcja-naprawy">${escapeHtml(dane.blad || "Nie udało się przygotować grafiki.")}</p>`;
+    przycisk.disabled = false;
+    return;
+  }
+
+  await strumieniujSSE(odpowiedz, (zdarzenie) => {
+    if (zdarzenie.typ === "status") {
+      obszar.innerHTML = `<div class="log-przebiegu"><div class="wpis">${escapeHtml(zdarzenie.tekst)}</div></div>`;
+    } else if (zdarzenie.typ === "blad") {
+      obszar.innerHTML = `<p class="instrukcja-naprawy">${escapeHtml(zdarzenie.tekst)}</p>`;
+      przycisk.disabled = false;
+    } else if (zdarzenie.typ === "wynik") {
+      dopiszKoszt(zdarzenie.koszt_usd);
+      przycisk.disabled = false;
+      przycisk.textContent = "Zrób od nowa";
+      if (zdarzenie.blad_grafiki) {
+        obszar.innerHTML = `<p class="instrukcja-naprawy">${escapeHtml(zdarzenie.blad_grafiki)}</p>`;
+      } else if (zdarzenie.grafika) {
+        daneGrafiki[id] = zdarzenie.grafika;
+        pokazGrafike(id);
+      }
+    }
+  });
+}
+
+function pokazGrafike(id) {
+  const dane = daneGrafiki[id];
+  const obszar = document.querySelector(`[data-grafika-dla="${id}"]`);
+  const ciemny = dane.wariant_kolorystyczny === "ciemny";
+
+  const ostrzezenia = (dane.ostrzezenia || []).length
+    ? `<div class="ostrzezenie-koszt">${dane.ostrzezenia.map(escapeHtml).join("<br>")}</div>`
+    : "";
+
+  obszar.innerHTML = `
+    ${ostrzezenia}
+    <div class="uklad-grafiki">
+      <canvas class="podglad-grafiki" data-canvas="${id}"></canvas>
+      <div class="ustawienia-grafiki">
+        <label>Hasło na grafice
+          <textarea class="pole-hasla" rows="3">${escapeHtml(dane.haslo)}</textarea>
+        </label>
+        <label>Podtytuł (opcjonalny)
+          <textarea class="pole-podtytulu" rows="2">${escapeHtml(dane.podtytul || "")}</textarea>
+        </label>
+        <label>Wersja kolorystyczna
+          <select class="wybor-wariantu">
+            <option value="ciemny"${ciemny ? " selected" : ""}>ciemna</option>
+            <option value="jasny"${ciemny ? "" : " selected"}>jasna</option>
+          </select>
+        </label>
+        <div class="przyciski-grafiki">
+          <button class="przycisk-drugorzedny" data-odswiez-grafike="${id}">Odśwież podgląd</button>
+          <button class="przycisk-glowny" data-pobierz-grafike="${id}">Pobierz PNG</button>
+        </div>
+        ${dane.alt ? `<p class="szczegoly"><strong>Tekst alternatywny:</strong> ${escapeHtml(dane.alt)}</p>` : ""}
+      </div>
+    </div>
+  `;
+
+  const canvas = obszar.querySelector(`[data-canvas="${id}"]`);
+  narysujGrafike(canvas, dane);
+
+  obszar.querySelector(`[data-odswiez-grafike="${id}"]`).addEventListener("click", () => odswiezGrafike(id));
+  obszar.querySelector(`[data-pobierz-grafike="${id}"]`).addEventListener("click", () => {
+    const nazwa = (wynikiPostow[id].plik || "grafika").replace(/\.md$/, "") + ".png";
+    pobierzGrafike(canvas, nazwa);
+  });
+}
+
+async function odswiezGrafike(id) {
+  const obszar = document.querySelector(`[data-grafika-dla="${id}"]`);
+  const haslo = obszar.querySelector(".pole-hasla").value;
+  const podtytul = obszar.querySelector(".pole-podtytulu").value;
+  const wariant = obszar.querySelector(".wybor-wariantu").value;
+
+  const odpowiedz = await fetch("/api/grafika/podglad", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ haslo, podtytul, wariant_kolorystyczny: wariant }),
+  });
+  const dane = await odpowiedz.json();
+  if (!odpowiedz.ok) {
+    alert(dane.blad || "Nie udało się odświeżyć podglądu.");
+    return;
+  }
+  // Tekst alternatywny pochodzi od asystenta i nie zmienia się przy ręcznej
+  // korekcie hasła — przenosimy go do nowych danych.
+  dane.grafika.alt = daneGrafiki[id].alt;
+  daneGrafiki[id] = dane.grafika;
+  pokazGrafike(id);
 }
 
 function otworzPolePoprawki(przycisk) {
@@ -1014,6 +1151,10 @@ async function renderujStyl() {
     return;
   }
 
+  // Identyfikacja wizualna nie jest plikiem warstwy jakości (ma inny format
+  // i osobne endpointy), ale operatorka szuka jej w tym samym miejscu.
+  dane.pliki = [...dane.pliki, { id: "brand-kit", nazwa: "Identyfikacja wizualna", opis: "Kolory, kroje i logo używane przy tworzeniu grafik", luki: 0 }];
+
   const zakladki = dane.pliki
     .map((plik) => {
       const luki = plik.luki > 0 ? ` <span class="znacznik-luk">${plik.luki}</span>` : "";
@@ -1040,6 +1181,12 @@ async function renderujStyl() {
 
 async function otworzPlikStylu(identyfikator, listaPlikow) {
   aktywnyPlikStylu = identyfikator;
+  if (identyfikator === "brand-kit") {
+    OBSZAR.querySelectorAll(".zakladka-pliku").forEach((p) => {
+      p.classList.toggle("aktywna", p.dataset.plik === identyfikator);
+    });
+    return otworzIdentyfikacjeWizualna();
+  }
   const opisPliku = listaPlikow.find((plik) => plik.id === identyfikator) || {};
   OBSZAR.querySelectorAll(".zakladka-pliku").forEach((przycisk) => {
     przycisk.classList.toggle("aktywna", przycisk.dataset.plik === identyfikator);
@@ -1084,6 +1231,89 @@ async function otworzPlikStylu(identyfikator, listaPlikow) {
     document.getElementById("pole-stylu").value = trescNaDysku;
     document.getElementById("podglad-roznicy").innerHTML = "";
     document.getElementById("status-stylu").textContent = "Przywrócono zapisaną wersję.";
+  });
+}
+
+async function otworzIdentyfikacjeWizualna() {
+  const edytor = document.getElementById("edytor-stylu");
+  edytor.innerHTML = `<div class="karta"><p class="placeholder">Wczytuję…</p></div>`;
+
+  let dane;
+  try {
+    const odpowiedz = await fetch("/api/brand-kit");
+    dane = await odpowiedz.json();
+    if (!odpowiedz.ok) throw new Error(dane.blad || `HTTP ${odpowiedz.status}`);
+  } catch (blad) {
+    edytor.innerHTML = `<div class="karta"><p class="instrukcja-naprawy">${escapeHtml(blad.message)}</p></div>`;
+    return;
+  }
+
+  const ostrzezenia = dane.ostrzezenia.length
+    ? `<div class="ostrzezenie-koszt">${dane.ostrzezenia.map(escapeHtml).join("<br>")}</div>`
+    : "";
+  const listaLogo = dane.logo.length
+    ? `<ul class="lista-materialow">${dane.logo.map((n) => `<li>${escapeHtml(n)}</li>`).join("")}</ul>`
+    : `<p class="szczegoly">Nie wgrano jeszcze logo — grafika użyje nazwy firmy zapisanej tekstem.</p>`;
+
+  edytor.innerHTML = `
+    <div class="karta">
+      <strong>Identyfikacja wizualna</strong>
+      <p class="szczegoly">Kolory, kroje i logo, z których powstają grafiki do postów.</p>
+      ${ostrzezenia}
+      <textarea id="pole-brand-kitu" class="monospace" rows="20" style="width:100%;margin-top:0.5rem"></textarea>
+      <div style="margin-top:0.75rem;display:flex;gap:0.5rem;align-items:center">
+        <button class="przycisk-glowny" id="zapisz-brand-kit">Zapisz zmiany</button>
+        <span id="status-brand-kitu" class="szczegoly"></span>
+      </div>
+    </div>
+    <div class="karta">
+      <strong>Logo</strong>
+      <p class="szczegoly">
+        Po wgraniu wpisz nazwę pliku w polu <code>logo → plik</code> powyżej.
+        Jeśli macie osobną wersję na ciemne tło, wgraj obie.
+      </p>
+      ${listaLogo}
+      <div class="pasek-narzedzi" style="margin:0.75rem 0 0">
+        <input type="file" id="plik-logo" accept=".png,.svg,.jpg,.jpeg,.webp">
+        <button class="przycisk-drugorzedny" id="wgraj-logo">Wgraj logo</button>
+        <span id="status-logo" class="szczegoly"></span>
+      </div>
+    </div>
+  `;
+  document.getElementById("pole-brand-kitu").value = dane.tresc;
+
+  document.getElementById("zapisz-brand-kit").addEventListener("click", async () => {
+    const status = document.getElementById("status-brand-kitu");
+    status.textContent = "Zapisuję…";
+    const odpowiedz = await fetch("/api/brand-kit", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tresc: document.getElementById("pole-brand-kitu").value }),
+    });
+    const wynik = await odpowiedz.json();
+    status.innerHTML = odpowiedz.ok
+      ? "Zapisano."
+      : `<span class="instrukcja-naprawy">${escapeHtml(wynik.blad)}</span>`;
+    if (odpowiedz.ok) otworzIdentyfikacjeWizualna();
+  });
+
+  document.getElementById("wgraj-logo").addEventListener("click", async () => {
+    const wejscie = document.getElementById("plik-logo");
+    const status = document.getElementById("status-logo");
+    if (!wejscie.files.length) {
+      status.innerHTML = `<span class="instrukcja-naprawy">Najpierw wybierz plik.</span>`;
+      return;
+    }
+    status.textContent = "Wgrywam…";
+    const formularz = new FormData();
+    formularz.append("plik", wejscie.files[0]);
+    const odpowiedz = await fetch("/api/brand-kit/logo", { method: "POST", body: formularz });
+    const wynik = await odpowiedz.json();
+    if (!odpowiedz.ok) {
+      status.innerHTML = `<span class="instrukcja-naprawy">${escapeHtml(wynik.blad)}</span>`;
+      return;
+    }
+    otworzIdentyfikacjeWizualna();
   });
 }
 

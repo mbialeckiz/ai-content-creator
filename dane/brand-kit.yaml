@@ -1,0 +1,36 @@
+# Identyfikacja wizualna Forces DC — używana przy tworzeniu grafik do postów.
+#
+# Ten plik edytujesz w aplikacji (zakładka Styl → Identyfikacja wizualna).
+# Kolory podawaj jako kody szesnastkowe, np. #0B3B5C.
+
+nazwa_firmy: Forces DC
+podpis: Fit-out data center · Norwegia
+
+# Kolory marki. `tlo` i `tekst` muszą mieć wyraźny kontrast — to na nich
+# ląduje hasło posta.
+kolory:
+  tlo: "#0E2233"
+  tekst: "#FFFFFF"
+  akcent: "#F0A500"
+  tlo_alternatywne: "#F4F5F7"
+  tekst_alternatywny: "#0E2233"
+
+# Nazwa kroju z systemu. Aplikacja rysuje grafikę w przeglądarce, więc
+# działa każdy font zainstalowany na komputerze operatorki. Jeśli marka
+# używa kroju, którego nie ma w systemie, wpisz najbliższy zamiennik.
+kroje:
+  naglowek: "Helvetica Neue, Helvetica, Arial, sans-serif"
+  podpis: "Helvetica Neue, Helvetica, Arial, sans-serif"
+
+# Logo: wgraj plik przez zakładkę Styl. Obsługiwane PNG i SVG.
+# Wersja na ciemne tło jest opcjonalna — jeśli jej nie podasz, użyjemy
+# podstawowej.
+logo:
+  plik: ""
+  plik_na_ciemnym: ""
+  wysokosc_px: 64
+
+# Domyślny format. LinkedIn dobrze pokazuje kwadrat w strumieniu.
+format:
+  szerokosc: 1200
+  wysokosc: 1200

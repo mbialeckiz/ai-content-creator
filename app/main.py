@@ -17,6 +17,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, File, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+import yaml
 from pydantic import BaseModel
 
 # Musi wykonać się przed jakimkolwiek importem, który buduje ClaudeAgentOptions:
@@ -24,7 +25,7 @@ from pydantic import BaseModel
 # (SPEC sekcja 5), więc zmienna musi tam być, zanim padnie pierwsze zapytanie.
 load_dotenv()
 
-from app import diagnostyka, korpus, pliki, silnik  # noqa: E402 — patrz komentarz wyżej
+from app import diagnostyka, grafika, korpus, pliki, silnik  # noqa: E402 — patrz komentarz wyżej
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("forces_content_studio")
@@ -509,6 +510,129 @@ async def api_popraw(dane: PoleceniePoprawki) -> JSONResponse | StreamingRespons
         _strumien_poprawki(dane.plik, dane.indeks, polecenie),
         media_type="text/event-stream",
     )
+
+
+class ZapotrzebowanieNaGrafike(BaseModel):
+    plik: str
+    indeks: int = 0
+
+
+async def _strumien_grafiki(plik: str, indeks: int) -> AsyncIterator[str]:
+    katalog = katalog_danych()
+    sciezka = pliki.sciezka_wygenerowanego_posta(katalog, plik)
+    post = pliki.wczytaj_wygenerowany_post(sciezka)
+    tresc = post.warianty[indeks].tresc
+
+    zebrane: list[str] = []
+    async for zdarzenie in silnik.zaproponuj_haslo_grafiki(katalog, tresc, post.brief_graficzny):
+        if zdarzenie["typ"] == "fragment":
+            zebrane.append(zdarzenie["tekst"])
+            continue
+        if zdarzenie["typ"] == "wynik" and not zdarzenie["bledny"]:
+            rozebrane = silnik.rozbierz_odpowiedz_o_grafice("".join(zebrane))
+            if not rozebrane["haslo"]:
+                zdarzenie["blad_grafiki"] = (
+                    "Asystent nie zaproponował hasła. Wpisz je ręcznie w polu poniżej."
+                )
+            else:
+                zdarzenie["grafika"] = grafika.zbuduj_dane_grafiki(
+                    katalog, haslo=rozebrane["haslo"], podtytul=rozebrane["podtytul"]
+                )
+                zdarzenie["grafika"]["alt"] = rozebrane["alt"]
+        yield _jako_sse(zdarzenie)
+
+
+@app.post("/api/grafika", response_model=None)
+async def api_grafika(dane: ZapotrzebowanieNaGrafike) -> JSONResponse | StreamingResponse:
+    """Dobiera hasło na grafikę do wybranego wariantu posta."""
+    sciezka = pliki.sciezka_wygenerowanego_posta(katalog_danych(), dane.plik)
+    if not sciezka.is_file():
+        return JSONResponse({"blad": "Nie znaleźliśmy tego posta."}, status_code=404)
+    try:
+        post = pliki.wczytaj_wygenerowany_post(sciezka)
+    except OSError as blad:
+        logger.error("Nie udało się odczytać posta %s: %s", sciezka, blad)
+        return JSONResponse({"blad": "Nie udało się odczytać posta."}, status_code=500)
+    if not 0 <= dane.indeks < len(post.warianty):
+        return JSONResponse({"blad": "Ten wariant nie istnieje."}, status_code=400)
+
+    return StreamingResponse(_strumien_grafiki(dane.plik, dane.indeks), media_type="text/event-stream")
+
+
+class RecznaGrafika(BaseModel):
+    haslo: str
+    podtytul: str = ""
+    wariant_kolorystyczny: str = "ciemny"
+
+
+@app.post("/api/grafika/podglad", response_model=None)
+async def api_grafika_podglad(dane: RecznaGrafika) -> JSONResponse:
+    """Przelicza dane grafiki po ręcznej zmianie hasła albo wariantu kolorów.
+    Nie woła modelu — jest darmowe i natychmiastowe."""
+    if not dane.haslo.strip():
+        return JSONResponse({"blad": "Wpisz hasło, które ma być na grafice."}, status_code=400)
+    return JSONResponse(
+        {
+            "grafika": grafika.zbuduj_dane_grafiki(
+                katalog_danych(),
+                haslo=dane.haslo.strip(),
+                podtytul=dane.podtytul.strip(),
+                wariant_kolorystyczny=dane.wariant_kolorystyczny,
+            )
+        }
+    )
+
+
+@app.get("/api/brand-kit")
+async def api_brand_kit() -> JSONResponse:
+    katalog = katalog_danych()
+    kit, ostrzezenia = grafika.wczytaj_brand_kit(katalog)
+    plik = grafika.sciezka_brand_kitu(katalog)
+    return JSONResponse(
+        {
+            "tresc": plik.read_text(encoding="utf-8") if plik.is_file() else "",
+            "ostrzezenia": ostrzezenia,
+            "logo": grafika.lista_logo(katalog),
+            "nazwa_firmy": kit["nazwa_firmy"],
+        }
+    )
+
+
+@app.put("/api/brand-kit", response_model=None)
+async def api_zapisz_brand_kit(dane: TrescPliku) -> JSONResponse:
+    try:
+        yaml.safe_load(dane.tresc)
+    except yaml.YAMLError as blad:
+        return JSONResponse(
+            {"blad": f"Plik ma błąd formatu i nie został zapisany: {blad}"}, status_code=400
+        )
+    try:
+        grafika.sciezka_brand_kitu(katalog_danych()).write_text(dane.tresc, encoding="utf-8")
+    except OSError as blad:
+        logger.error("Nie udało się zapisać identyfikacji wizualnej: %s", blad)
+        return JSONResponse(
+            {"blad": "Nie udało się zapisać — sprawdź, czy folder danych jest dostępny."},
+            status_code=500,
+        )
+    _, ostrzezenia = grafika.wczytaj_brand_kit(katalog_danych())
+    return JSONResponse({"zapisano": True, "ostrzezenia": ostrzezenia})
+
+
+@app.post("/api/brand-kit/logo", response_model=None)
+async def api_wgraj_logo(plik: UploadFile = File(...)) -> JSONResponse:
+    nazwa = plik.filename or "logo.png"
+    if Path(nazwa).suffix.lower() not in grafika.ROZSZERZENIA_LOGO:
+        return JSONResponse(
+            {"blad": "Logo wgraj jako PNG, SVG, JPG albo WEBP."}, status_code=400
+        )
+    cel = grafika.przygotuj_miejsce_na_logo(katalog_danych(), nazwa)
+    try:
+        with cel.open("wb") as docelowy:
+            shutil.copyfileobj(plik.file, docelowy)
+    except OSError as blad:
+        logger.error("Nie udało się zapisać logo %s: %s", cel, blad)
+        return JSONResponse({"blad": "Nie udało się zapisać logo."}, status_code=500)
+    return JSONResponse({"zapisano": True, "plik": cel.name})
 
 
 class PrzywroceniePoprzedniej(BaseModel):

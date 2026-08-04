@@ -893,3 +893,46 @@ select.status-opublikowany { color: var(--ok); font-weight: 650; }
   min-height: 1.1rem;
   margin-top: 0.35rem;
 }
+
+/* ---------- Grafika do posta ---------- */
+
+.uklad-grafiki {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  gap: 1.25rem;
+  margin-top: 0.85rem;
+  align-items: start;
+}
+
+.podglad-grafiki {
+  width: 300px;
+  height: 300px;
+  border: 1px solid var(--linia);
+  border-radius: var(--promien-maly);
+  background: var(--tlo);
+}
+
+.ustawienia-grafiki {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.ustawienia-grafiki label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.8rem;
+  color: var(--tekst-przygaszony);
+}
+
+.ustawienia-grafiki textarea,
+.ustawienia-grafiki select {
+  font-size: 0.9rem;
+}
+
+.przyciski-grafiki {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.15rem;
+}

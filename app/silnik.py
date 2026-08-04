@@ -684,6 +684,64 @@ async def popraw_wariant(
         yield zdarzenie
 
 
+PROMPT_HASLO_GRAFIKI = (
+    "Jesteś dyrektorem artystycznym pracującym dla Forces DC (fit-out data "
+    "center, Norwegia). Dostajesz treść posta na LinkedIn. Twoim zadaniem "
+    "jest wybrać tekst na grafikę, która będzie towarzyszyć temu postowi.\n\n"
+    f"{GRANICA_NDA} {ZAKAZ_TRESCI_PRAWNYCH}\n\n"
+    "Zasady:\n"
+    "- HASŁO: najwyżej 60 znaków. Ma działać samo, bez czytania posta, i "
+    "zatrzymywać scrollowanie. Wyciągnij najmocniejszą myśl z tekstu — nie "
+    "streszczaj całości i nie powtarzaj pierwszego zdania posta słowo w słowo.\n"
+    "- PODTYTUŁ: najwyżej 80 znaków, może być pusty. Doprecyzowuje hasło.\n"
+    "- Nie używaj liczb, nazw ani faktów, których nie ma w poście. Jeśli post "
+    "zawiera znaczniki [DO UZUPEŁNIENIA], nie przenoś ich na grafikę — po "
+    "prostu ich nie używaj.\n"
+    "- Bez cudzysłowów wokół hasła, bez emotikon, bez hashtagów.\n"
+    "- TEKST ALTERNATYWNY: jedno zdanie opisujące grafikę dla osób "
+    "korzystających z czytnika ekranu.\n\n"
+    "ODPOWIEDŹ: dokładnie trzy linie, bez żadnego wstępu ani komentarza:\n"
+    "HASLO: <treść>\n"
+    "PODTYTUL: <treść albo puste>\n"
+    "ALT: <treść>"
+)
+
+
+def rozbierz_odpowiedz_o_grafice(tekst: str) -> dict[str, str]:
+    """Wyciąga trzy pola z odpowiedzi modelu. Format jest prosty i sztywny,
+    więc nie ma tu parsowania JSON-a, które psuje się przy każdym dodatkowym
+    zdaniu od modelu."""
+    wynik = {"haslo": "", "podtytul": "", "alt": ""}
+    etykiety = {"HASLO": "haslo", "HASŁO": "haslo", "PODTYTUL": "podtytul", "PODTYTUŁ": "podtytul", "ALT": "alt"}
+    for linia in tekst.splitlines():
+        etykieta, _, wartosc = linia.partition(":")
+        klucz = etykiety.get(etykieta.strip().upper())
+        if klucz and not wynik[klucz]:
+            wynik[klucz] = wartosc.strip().strip('"„”')
+    return wynik
+
+
+async def zaproponuj_haslo_grafiki(
+    katalog_danych: Path, tresc_posta: str, brief_graficzny: str = ""
+) -> AsyncIterator[dict[str, Any]]:
+    """Wybiera tekst na grafikę do posta. Tryb bez narzędzi i z niskim
+    sufitem — to jeden krótki wybór redakcyjny, nie generowanie treści."""
+    opcje = zbuduj_opcje(
+        katalog_danych,
+        PROMPT_HASLO_GRAFIKI,
+        bez_narzedzi=True,
+        limit_usd=0.15,
+        maks_tur=3,
+    )
+    czesci = [f"TREŚĆ POSTA:\n{tresc_posta.strip()}"]
+    if brief_graficzny.strip():
+        czesci.append(f"\nBRIEF GRAFICZNY OD REDAKTORA (może zawierać gotowy pomysł na hasło):\n{brief_graficzny.strip()}")
+
+    yield {"typ": "status", "tekst": "Dobieram hasło na grafikę…"}
+    async for zdarzenie in _przetworz_zapytanie(opcje, "\n".join(czesci)):
+        yield zdarzenie
+
+
 async def uruchom_stratega(
     katalog_danych: Path, miesiac: str, uwagi: str = ""
 ) -> AsyncIterator[dict[str, Any]]:
