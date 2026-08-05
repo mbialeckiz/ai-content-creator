@@ -89,6 +89,20 @@ zamiast zgadywania. Zweryfikowano względem `claude-agent-sdk==0.2.128`
   wewnątrz generatora `StreamingResponse` FastAPI nie blokuje event loopa,
   osobny wątek/task nie jest potrzebny.
 
+## Poprawianie posta — dwie drogi
+
+- **„Popraw"** — jednolinijkowe polecenie („skróć o połowę", „mniej
+  formalnie"). Przepisuje asystent, poprzednia wersja wraca przez „Cofnij".
+- **„Popraw ręcznie"** — wejście w tekst. Do literówek i drobnych korekt:
+  nie czeka się na model i nic to nie kosztuje.
+
+Obie drogi zapisują od razu do pliku posta w `dane/output/` i nie ruszają
+pozostałych sekcji ani oznaczenia wybranego wariantu.
+
+Każdy brak z sekcji „Braki" ma przycisk **„Dopisz do materiałów"** —
+przenosi tekst na ekran Materiały z wyborem sekcji, żeby następny post
+nie miał już tej dziury.
+
 ## Rozmowa o stylu (tryb Wywiad)
 
 Ekran „Styl" → przycisk **„Porozmawiaj o stylu"**. Asystent przegląda

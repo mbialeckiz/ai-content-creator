@@ -537,6 +537,7 @@ function elementWynikuPosta(post, sciezkaPliku, czesciowy = false) {
         <div class="wariant-stopka">
           <button class="przycisk-drugorzedny" data-kopiuj-wariant="${indeks}">Kopiuj</button>
           <button class="przycisk-drugorzedny" data-popraw="${indeks}">Popraw</button>
+          <button class="przycisk-drugorzedny" data-edytuj="${indeks}">Popraw ręcznie</button>
           <button class="przycisk-drugorzedny" data-cofnij="${indeks}" hidden>Cofnij</button>
           <button class="przycisk-wybierz" data-wybierz="${indeks}">
             ${post.wybrany === indeks ? "Odznacz wybrany" : "Zapisz jako wybrany"}
@@ -547,8 +548,18 @@ function elementWynikuPosta(post, sciezkaPliku, czesciowy = false) {
     )
     .join("");
 
+  // Każdy brak da się przenieść wprost na ekran Materiały. Bez tego Magda
+  // musiałaby przepisywać go ręcznie, a wtedy po prostu tego nie zrobi —
+  // a brak materiałów z firmy to zdiagnozowany rdzeń problemu tego klienta.
   const brakiHtml = post.braki.length
-    ? `<ul>${post.braki.map((brak) => `<li>${escapeHtml(brak)}</li>`).join("")}</ul>`
+    ? `<ul class="lista-brakow">${post.braki
+        .map(
+          (brak) => `<li>
+            <span>${escapeHtml(brak)}</span>
+            <button class="przycisk-drugorzedny maly" data-dopisz-brak="${escapeHtml(brak)}">Dopisz do materiałów</button>
+          </li>`
+        )
+        .join("")}</ul>`
     : "<p>Brak braków.</p>";
 
   const niekompletnyHtml = post.kompletny
@@ -667,12 +678,81 @@ function podepnijPrzyciskiKopiowania(zakres = document) {
     przycisk.addEventListener("click", () => cofnijPoprawke(przycisk));
   });
 
+  zakres.querySelectorAll("[data-edytuj]").forEach((przycisk) => {
+    if (przycisk.dataset.podpieto) return;
+    przycisk.dataset.podpieto = "1";
+    przycisk.addEventListener("click", () => przelaczTrybEdycji(przycisk));
+  });
+
+  zakres.querySelectorAll("[data-dopisz-brak]").forEach((przycisk) => {
+    if (przycisk.dataset.podpieto) return;
+    przycisk.dataset.podpieto = "1";
+    przycisk.addEventListener("click", () => przeniesBrakDoMaterialow(przycisk.dataset.dopiszBrak));
+  });
+
   zakres.querySelectorAll("[data-wybierz]").forEach((przycisk) => {
     if (przycisk.dataset.podpieto) return;
     przycisk.dataset.podpieto = "1";
     przycisk.addEventListener("click", () =>
       zapiszWybranyWariant(przycisk, wynikDlaPrzycisku(przycisk))
     );
+  });
+}
+
+// Przeniesienie braku na ekran Materiały (SPEC-frontend 7). Nie zapisujemy
+// go od razu do żadnej sekcji — asystent nie wie, do której pasuje, a zły
+// wpis w materiałach jest gorszy niż jego brak. Przenosimy tekst do pola
+// i zostawiamy operatorce wybór sekcji.
+let brakDoPrzeniesienia = "";
+
+function przeniesBrakDoMaterialow(brak) {
+  brakDoPrzeniesienia = brak;
+  przejdzDoZakladki("materialy");
+}
+
+function wstawPrzeniesionyBrak(sekcje) {
+  const kontener = document.getElementById("przeniesiony-brak");
+  if (!kontener) return;
+  if (!brakDoPrzeniesienia) {
+    kontener.innerHTML = "";
+    return;
+  }
+
+  const tekst = brakDoPrzeniesienia;
+  brakDoPrzeniesienia = "";
+  const opcje = sekcje
+    .map((sekcja, indeks) => `<option value="${indeks}">${escapeHtml(sekcja)}</option>`)
+    .join("");
+
+  kontener.innerHTML = `
+    <div class="karta karta-propozycja">
+      <strong>Brak przeniesiony z posta</strong>
+      <p class="szczegoly">
+        Asystent zgłosił, że tego mu zabrakło. Przepisz to na zdanie o tym, co
+        realnie się wydarzyło, i wskaż sekcję — wtedy następny post nie będzie
+        już miał tej dziury.
+      </p>
+      <label class="szczegoly" style="display:block;margin-top:0.5rem">
+        Sekcja: <select id="sekcja-braku">${opcje}</select>
+      </label>
+      <textarea id="tresc-braku" rows="3" style="width:100%;margin-top:0.5rem">${escapeHtml(tekst)}</textarea>
+      <div class="pasek-narzedzi" style="margin-top:0.5rem">
+        <button class="przycisk-glowny" id="zapisz-brak">Dodaj do materiałów</button>
+        <button class="przycisk-drugorzedny" id="odrzuc-brak">Nie teraz</button>
+      </div>
+    </div>
+  `;
+  kontener.scrollIntoView({ behavior: "smooth", block: "nearest" });
+
+  document.getElementById("odrzuc-brak").addEventListener("click", () => {
+    kontener.innerHTML = "";
+  });
+  document.getElementById("zapisz-brak").addEventListener("click", () => {
+    const nowaTresc = document.getElementById("tresc-braku").value.trim();
+    if (!nowaTresc) return;
+    const sekcja = sekcje[Number(document.getElementById("sekcja-braku").value)];
+    stanMaterialow[sekcja] = [...(stanMaterialow[sekcja] || []), nowaTresc];
+    zapiszMaterialy();
   });
 }
 
@@ -949,7 +1029,9 @@ async function wyslijPoprawke(przycisk, polecenie) {
 }
 
 function odswiezWariant(karta, tresc, znaki) {
-  karta.querySelector(".podglad-tresc").parentElement.innerHTML = `
+  // Celujemy w kontener, nie w `.podglad-tresc` — w trybie ręcznej edycji
+  // podglądu nie ma, jest pole tekstowe.
+  karta.querySelector(".podglad-posta").innerHTML = `
     <div class="podglad-autor">
       <div class="podglad-awatar">FDC</div>
       <div>
@@ -959,9 +1041,12 @@ function odswiezWariant(karta, tresc, znaki) {
     </div>
     ${podgladZLiniaObciecia(tresc)}
   `;
+  // Odbudowując nagłówek, przenosimy też odznakę wyboru — bez tego poprawka
+  // wariantu kasowała informację, że to on idzie do publikacji.
   const licznikZnakow = karta.querySelector(".wariant-naglowek .szczegoly");
   const etykieta = licznikZnakow.querySelector(".wariant-etykieta").outerHTML;
-  licznikZnakow.innerHTML = `${etykieta} ${znaki} znaków`;
+  const odznaka = licznikZnakow.querySelector(".odznaka-wybrany")?.outerHTML || "";
+  licznikZnakow.innerHTML = `${etykieta} ${znaki} znaków ${odznaka}`;
 }
 
 async function cofnijPoprawke(przycisk) {
@@ -991,6 +1076,78 @@ async function cofnijPoprawke(przycisk) {
   odswiezWariant(karta, poprzednia, poprzednia.length);
   delete poprzednieWersje[klucz];
   przycisk.hidden = true;
+}
+
+// Ręczna edycja wariantu (SPEC-frontend 7: „z możliwością przejścia w tryb
+// edycji tekstu dla drobnych korekt"). Literówki nie warto poprawiać przez
+// model — ani czekać na odpowiedź, ani za nią płacić.
+function przelaczTrybEdycji(przycisk) {
+  const indeks = Number(przycisk.dataset.edytuj);
+  const karta = kartaWariantuDla(przycisk);
+  const kontener = karta.closest("[data-post-id]");
+  const wynik = wynikiPostow[kontener.dataset.postId];
+  const podglad = karta.querySelector(".podglad-posta");
+
+  if (karta.dataset.wEdycji) {
+    odswiezWariant(karta, wynik.warianty[indeks].tresc, wynik.warianty[indeks].znaki);
+    delete karta.dataset.wEdycji;
+    przycisk.textContent = "Popraw ręcznie";
+    return;
+  }
+
+  karta.dataset.wEdycji = "1";
+  przycisk.textContent = "Anuluj edycję";
+  podglad.innerHTML = `
+    <textarea class="pole-edycji-wariantu" rows="12" style="width:100%">${escapeHtml(wynik.warianty[indeks].tresc)}</textarea>
+    <div class="pasek-narzedzi" style="margin-top:0.5rem">
+      <button class="przycisk-glowny przycisk-zapisz-edycje">Zapisz zmiany</button>
+      <span class="szczegoly status-edycji"></span>
+    </div>
+  `;
+
+  const pole = podglad.querySelector(".pole-edycji-wariantu");
+  const status = podglad.querySelector(".status-edycji");
+  const odswiezLicznik = () => (status.textContent = `${pole.value.trim().length} znaków`);
+  odswiezLicznik();
+  pole.addEventListener("input", odswiezLicznik);
+  pole.focus();
+
+  podglad.querySelector(".przycisk-zapisz-edycje").addEventListener("click", async (zdarzenie) => {
+    const nowa = pole.value.trim();
+    if (!nowa) {
+      status.innerHTML = `<span class="instrukcja-naprawy">Treść nie może być pusta.</span>`;
+      return;
+    }
+    zdarzenie.target.disabled = true;
+    status.textContent = "Zapisuję…";
+
+    let odpowiedz;
+    try {
+      odpowiedz = await fetch("/api/posty/wariant", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ plik: wynik.plik, indeks, tresc: nowa }),
+      });
+    } catch (blad) {
+      // Wąskie `try` tylko wokół sieci: obejmując też odświeżenie karty,
+      // zamieniało błąd w kodzie na mylący komunikat „brak połączenia".
+      status.innerHTML = `<span class="instrukcja-naprawy">Nie udało się połączyć z serwerem (${escapeHtml(blad.message)}).</span>`;
+      zdarzenie.target.disabled = false;
+      return;
+    }
+
+    const dane = await odpowiedz.json();
+    if (!odpowiedz.ok) {
+      status.innerHTML = `<span class="instrukcja-naprawy">${escapeHtml(dane.blad || "Nie udało się zapisać.")}</span>`;
+      zdarzenie.target.disabled = false;
+      return;
+    }
+    wynik.warianty[indeks].tresc = nowa;
+    wynik.warianty[indeks].znaki = dane.znaki;
+    odswiezWariant(karta, nowa, dane.znaki);
+    delete karta.dataset.wEdycji;
+    przycisk.textContent = "Popraw ręcznie";
+  });
 }
 
 async function strumieniujSSE(odpowiedz, obslugaZdarzenia) {
@@ -2402,10 +2559,13 @@ async function renderujMaterialy() {
       <button class="przycisk-drugorzedny" id="przycisk-prosba">Wyślij prośbę o materiały</button>
     </div>
     ${blokPusty}
+    <div id="przeniesiony-brak"></div>
     <div id="prosba-o-materialy"></div>
     ${bloki}
     <div id="sekcja-artykulow"></div>
   `;
+
+  wstawPrzeniesionyBrak(dane.sekcje);
 
   document.getElementById("miesiac-materialow").addEventListener("change", (zdarzenie) => {
     miesiacMaterialow = zdarzenie.target.value;

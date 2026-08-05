@@ -265,6 +265,41 @@ def test_material_zrodlowy_od_operatora() -> None:
             "Materiał źródłowy od operatora" not in bez)
 
 
+def test_reczna_poprawka_wariantu() -> None:
+    from fastapi.testclient import TestClient
+
+    katalog = katalog_testowy()
+    sciezka = katalog / "output" / "2026-08-04_reczna.md"
+    sciezka.write_text(POST_PELNY, encoding="utf-8")
+    pliki.oznacz_wybrany_wariant(sciezka, 0)
+
+    pierwotny = main.katalog_danych
+    main.katalog_danych = lambda: katalog
+    try:
+        klient = TestClient(main.app)
+        ok = klient.put(
+            "/api/posty/wariant",
+            json={"plik": sciezka.name, "indeks": 0, "tresc": "Poprawiona recznie tresc."},
+        )
+        pusta = klient.put(
+            "/api/posty/wariant", json={"plik": sciezka.name, "indeks": 0, "tresc": "   "}
+        )
+        nieznany = klient.put(
+            "/api/posty/wariant", json={"plik": "nie-ma.md", "indeks": 0, "tresc": "cokolwiek"}
+        )
+    finally:
+        main.katalog_danych = pierwotny
+
+    post = pliki.wczytaj_wygenerowany_post(sciezka)
+    sprawdz("ręczna poprawka się zapisuje", ok.status_code == 200)
+    sprawdz("zapisana treść jest w pliku", post.warianty[0].tresc == "Poprawiona recznie tresc.")
+    sprawdz("ręczna poprawka zostawia etykietę", post.warianty[0].etykieta == "faktograficzny")
+    sprawdz("ręczna poprawka nie kasuje wyboru wariantu", post.wybrany == 0)
+    sprawdz("ręczna poprawka nie rusza pozostałych sekcji", post.kompletny)
+    sprawdz("pusta treść jest odrzucana", pusta.status_code == 400)
+    sprawdz("nieistniejący post daje 404", nieznany.status_code == 404)
+
+
 def test_wywiad_wycina_propozycje_plikow() -> None:
     from app.silnik import ZNACZNIK_KONCA_PROPOZYCJI, ZNACZNIK_POCZATKU_PROPOZYCJI
 

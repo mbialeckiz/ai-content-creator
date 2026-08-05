@@ -749,6 +749,37 @@ async def api_cofnij_poprawke(dane: PrzywroceniePoprzedniej) -> JSONResponse:
     return JSONResponse({"przywrocono": True})
 
 
+class RecznaTrescWariantu(BaseModel):
+    plik: str
+    indeks: int
+    tresc: str
+
+
+@app.put("/api/posty/wariant", response_model=None)
+async def api_zapisz_tresc_wariantu(dane: RecznaTrescWariantu) -> JSONResponse:
+    """Ręczna poprawka treści wariantu (SPEC-frontend 7).
+
+    Podstawową ścieżką jest „Popraw" poleceniem, ale literówki nie warto
+    naprawiać przez model — ani czekać na nie, ani za nie płacić.
+    """
+    tresc = dane.tresc.strip()
+    if not tresc:
+        return JSONResponse({"blad": "Treść posta nie może być pusta."}, status_code=400)
+
+    sciezka = pliki.sciezka_wygenerowanego_posta(katalog_danych(), dane.plik)
+    if not sciezka.is_file():
+        return JSONResponse({"blad": "Nie znaleźliśmy tego posta."}, status_code=404)
+    try:
+        pliki.podmien_wariant(sciezka, dane.indeks, tresc)
+    except (KeyError, OSError) as blad:
+        logger.error("Nie udało się zapisać ręcznej poprawki w %s: %s", sciezka, blad)
+        return JSONResponse(
+            {"blad": "Nie udało się zapisać zmiany — sprawdź, czy folder danych jest dostępny."},
+            status_code=500,
+        )
+    return JSONResponse({"zapisano": True, "znaki": len(tresc)})
+
+
 class WyborWariantu(BaseModel):
     plik: str
     # None = odznaczenie wyboru (operatorka klika drugi raz w ten sam wariant).

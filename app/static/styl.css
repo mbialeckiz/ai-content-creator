@@ -547,6 +547,29 @@ label {
   background: var(--akcent-tlo);
 }
 
+/* Braki z posta: tekst po lewej, przycisk przeniesienia po prawej. */
+.lista-brakow {
+  list-style: disc;
+  margin: 0.3rem 0 0 1.1rem;
+}
+
+.lista-brakow li {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.25rem 0;
+}
+
+.lista-brakow button {
+  flex-shrink: 0;
+}
+
+.pole-edycji-wariantu {
+  font-family: inherit;
+  line-height: 1.55;
+}
+
 /* ---------- Wywiad o stylu (SPEC 8.3) ---------- */
 
 .karta-wywiad {
