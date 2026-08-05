@@ -563,7 +563,19 @@ NAGLOWEK_CZEGO_ZABRAKLO = "Czego zabrakło"
 STATUSY_PLANU = ("szkic", "zatwierdzony", "napisany", "opublikowany")
 SYNONIMY_STATUSOW = {"draft": "szkic"}
 
-KOLUMNY_PLANU = ("#", "Data", "Typ", "Temat", "Źródło", "Do potwierdzenia", "Status")
+# „Kąt ujęcia" doszło później. Parser dopasowuje komórki po nazwach nagłówków,
+# więc plan zbudowany starszą wersją (siedem kolumn) nadal się wczytuje —
+# nowe pole zostaje po prostu puste.
+KOLUMNY_PLANU = (
+    "#", "Data", "Typ", "Temat", "Kąt ujęcia", "Źródło", "Do potwierdzenia", "Status",
+)
+
+# Sekcje, które strateg dopisuje pod tabelą. Trzymamy je w pliku planu, a nie
+# osobno: operatorka ma jedno miejsce, w którym leży wszystko o danym miesiącu,
+# i może to edytować ręcznie (CLAUDE.md #2).
+NAGLOWEK_USTALEN = "Ustalenia z researchu"
+NAGLOWEK_PYTAN = "Pytania do firmy"
+NAGLOWEK_ZAPASU = "Zapas tematów"
 
 
 @dataclass
@@ -572,6 +584,9 @@ class PozycjaPlanu:
     data: str = ""
     typ: str = ""
     temat: str = ""
+    # Konkretny kąt: od czego zacząć i dlaczego akurat Forces DC ma tu głos.
+    # Bez tego redaktor dostaje samo hasło tematu i zaczyna od zera.
+    kat_ujecia: str = ""
     zrodlo: str = ""
     do_potwierdzenia: str = ""
     status: str = "szkic"
@@ -583,6 +598,15 @@ class PlanMiesiaca:
     istnieje: bool = False
     pozycje: list[PozycjaPlanu] = field(default_factory=list)
     czego_zabraklo: list[str] = field(default_factory=list)
+    # Fakty, liczby i adresy zebrane przy budowaniu planu. Research kosztuje
+    # najwięcej w całej aplikacji — bez zapisania go płacilibyśmy za to samo
+    # przy każdym poście z tego miesiąca.
+    ustalenia: str = ""
+    # Gotowe pytania do wysłania do firmy — zamiast ogólnego „brakuje danych".
+    pytania_do_firmy: list[str] = field(default_factory=list)
+    # Tematy eksperckie niewymagające materiałów z firmy, na wypadek gdy
+    # miesiąc okaże się chudszy, niż zakładano.
+    zapas_tematow: list[str] = field(default_factory=list)
     surowy_markdown: str = ""
 
 
@@ -613,6 +637,9 @@ def wczytaj_plan(katalog_danych: Path, miesiac: str) -> PlanMiesiaca:
 
     sekcje = _wytnij_sekcje(tresc)
     plan.czego_zabraklo = _rozbierz_braki(sekcje.get(NAGLOWEK_CZEGO_ZABRAKLO, ""))
+    plan.ustalenia = sekcje.get(NAGLOWEK_USTALEN, "").strip()
+    plan.pytania_do_firmy = _rozbierz_braki(sekcje.get(NAGLOWEK_PYTAN, ""))
+    plan.zapas_tematow = _rozbierz_braki(sekcje.get(NAGLOWEK_ZAPASU, ""))
 
     # Tabela jest przed pierwszym nagłówkiem `## `, więc bierzemy tekst do niego.
     czesc_z_tabela = re.split(r"^## ", tresc, maxsplit=1, flags=re.MULTILINE)[0]
@@ -634,6 +661,7 @@ def wczytaj_plan(katalog_danych: Path, miesiac: str) -> PlanMiesiaca:
                 data=wiersz.get("Data", ""),
                 typ=wiersz.get("Typ", ""),
                 temat=wiersz.get("Temat", ""),
+                kat_ujecia=wiersz.get("Kąt ujęcia", ""),
                 zrodlo=wiersz.get("Źródło", ""),
                 do_potwierdzenia=wiersz.get("Do potwierdzenia", ""),
                 status=SYNONIMY_STATUSOW.get(status, status) or "szkic",
@@ -653,6 +681,7 @@ def _plan_jako_markdown(plan: PlanMiesiaca) -> str:
                 pozycja.data,
                 pozycja.typ,
                 pozycja.temat,
+                pozycja.kat_ujecia,
                 pozycja.zrodlo,
                 pozycja.do_potwierdzenia,
                 pozycja.status,
@@ -661,12 +690,20 @@ def _plan_jako_markdown(plan: PlanMiesiaca) -> str:
         + " |"
         for indeks, pozycja in enumerate(plan.pozycje, start=1)
     ]
-    braki = "\n".join(f"- {brak}" for brak in plan.czego_zabraklo) or "Brak uwag."
-    return (
-        f"# Plan na {plan.miesiac}\n\n"
-        + "\n".join([naglowek, rozdzielacz, *wiersze])
-        + f"\n\n## {NAGLOWEK_CZEGO_ZABRAKLO}\n\n{braki}\n"
-    )
+
+    def jako_lista(pozycje: list[str], gdy_pusto: str) -> str:
+        return "\n".join(f"- {pozycja}" for pozycja in pozycje) or gdy_pusto
+
+    czesci = [
+        f"# Plan na {plan.miesiac}\n",
+        "\n".join([naglowek, rozdzielacz, *wiersze]),
+        f"\n## {NAGLOWEK_USTALEN}\n\n{plan.ustalenia or 'Brak zapisanych ustaleń.'}",
+        f"\n## {NAGLOWEK_PYTAN}\n\n{jako_lista(plan.pytania_do_firmy, 'Brak pytań.')}",
+        f"\n## {NAGLOWEK_ZAPASU}\n\n{jako_lista(plan.zapas_tematow, 'Brak zapasu.')}",
+        f"\n## {NAGLOWEK_CZEGO_ZABRAKLO}\n\n"
+        f"{jako_lista(plan.czego_zabraklo, 'Brak uwag.')}\n",
+    ]
+    return "\n".join(czesci)
 
 
 def zmien_status_pozycji(

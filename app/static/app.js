@@ -244,6 +244,8 @@ const wynikiPostow = {};
 // Ustawiane przez przycisk „Napisz" w planie — ekran Posty otwiera się
 // z wypełnionym briefem (SPEC-frontend 6).
 let briefZPlanu = "";
+// Ustalenia z researchu przenoszone z planu do pola „Materiał źródłowy".
+let zrodloZPlanu = "";
 
 function renderujPosty() {
   OBSZAR.innerHTML = `
@@ -294,6 +296,13 @@ function renderujPosty() {
   if (briefZPlanu) {
     document.getElementById("pole-briefu").value = briefZPlanu;
     briefZPlanu = "";
+  }
+  if (zrodloZPlanu) {
+    const pole = document.getElementById("pole-zrodla");
+    pole.value = zrodloZPlanu;
+    pole.dispatchEvent(new Event("input"));
+    document.getElementById("karta-zrodla").open = true;
+    zrodloZPlanu = "";
   }
 
   wczytajHistoriePostow();
@@ -2295,7 +2304,28 @@ async function renderujPlan() {
     </div>
   `;
 
-  OBSZAR.innerHTML = `<h2>Plan</h2>${wyborMiesiaca}<div id="tresc-planu"></div>`;
+  OBSZAR.innerHTML = `
+    <h2>Plan</h2>
+    ${wyborMiesiaca}
+    <div class="karta karta-przeglad">
+      <div>
+        <strong>Sprawdź, co się dzieje w branży</strong>
+        <p class="szczegoly" style="margin:0.3rem 0 0">
+          Asystent przechodzi źródła branżowe i spisuje fakty, liczby, terminy
+          wydarzeń i tematy na posty. Robi to raz — z tego samego przeglądu
+          korzysta potem i plan miesiąca, i każdy pisany post.
+        </p>
+        <p class="szczegoly" style="margin:0.3rem 0 0">
+          Trwa kilka minut i kosztuje ok. 1,30 USD — to najdroższa rzecz w tej
+          aplikacji. Rób go raz na kilka tygodni, nie przed każdym postem.
+        </p>
+      </div>
+      <button class="przycisk-drugorzedny" id="przycisk-przeglad">Zrób przegląd branży</button>
+    </div>
+    <div id="wynik-przegladu"></div>
+    <div id="tresc-planu"></div>
+  `;
+  document.getElementById("przycisk-przeglad").addEventListener("click", zrobPrzegladBranzy);
   document.getElementById("miesiac-planu").addEventListener("change", (zdarzenie) => {
     miesiacPlanu = zdarzenie.target.value;
     renderujPlan();
@@ -2304,6 +2334,56 @@ async function renderujPlan() {
   const kontener = document.getElementById("tresc-planu");
   kontener.innerHTML = dane.plan.istnieje ? widokPlanu(dane) : widokPustegoPlanu(dane);
   podepnijAkcjePlanu(dane);
+}
+
+// Research branżowy na żądanie. Wynik ląduje wśród wyciągów z dokumentów,
+// więc od razu zasila plan i posty — bez tego ten sam research powtarzałby
+// się przy każdym budowaniu planu, a jest najdroższą operacją w aplikacji.
+async function zrobPrzegladBranzy() {
+  const przycisk = document.getElementById("przycisk-przeglad");
+  const obszar = document.getElementById("wynik-przegladu");
+  przycisk.disabled = true;
+  przycisk.textContent = "Przeglądam…";
+  obszar.innerHTML = `<div class="log-przebiegu"><div class="wpis">Zaczynam…</div></div>`;
+
+  const zakoncz = () => {
+    przycisk.disabled = false;
+    przycisk.textContent = "Zrób przegląd branży";
+  };
+
+  let odpowiedz;
+  try {
+    odpowiedz = await fetch("/api/przeglad-branzy", { method: "POST" });
+  } catch (blad) {
+    obszar.innerHTML = `<div class="karta"><p class="instrukcja-naprawy">Nie udało się połączyć z serwerem (${escapeHtml(blad.message)}).</p></div>`;
+    zakoncz();
+    return;
+  }
+
+  await strumieniujSSE(odpowiedz, (zdarzenie) => {
+    if (zdarzenie.typ === "status") {
+      obszar.innerHTML = `<div class="log-przebiegu"><div class="wpis">${escapeHtml(zdarzenie.tekst)}</div></div>`;
+    } else if (zdarzenie.typ === "blad") {
+      obszar.innerHTML = `<div class="karta"><p class="instrukcja-naprawy">${escapeHtml(zdarzenie.tekst)}</p></div>`;
+      zakoncz();
+    } else if (zdarzenie.typ === "wynik") {
+      dopiszKoszt(zdarzenie.koszt_usd);
+      zakoncz();
+      if (zdarzenie.blad_przegladu) {
+        obszar.innerHTML = `<div class="karta"><p class="instrukcja-naprawy">${escapeHtml(zdarzenie.blad_przegladu)}</p></div>`;
+        return;
+      }
+      obszar.innerHTML = `
+        <div class="karta">
+          <strong>Przegląd branży — ${escapeHtml(new Date().toLocaleDateString("pl-PL"))}</strong>
+          <p class="szczegoly">
+            Zapisany na stałe. Asystent korzysta z niego przy budowaniu planu
+            i przy pisaniu postów — nie trzeba nic przeklejać.
+          </p>
+          <div class="wyciag-dokumentu">${prostyMarkdown(zdarzenie.przeglad)}</div>
+        </div>`;
+    }
+  });
 }
 
 function widokPustegoPlanu(dane) {
@@ -2361,7 +2441,10 @@ function widokPlanu(dane) {
       <tr class="${pozycja.do_potwierdzenia ? "wymaga-oznaczenia" : ""}">
         <td>${escapeHtml(pozycja.data)}</td>
         <td>${escapeHtml(pozycja.typ)}</td>
-        <td>${escapeHtml(pozycja.temat)}</td>
+        <td>
+          ${escapeHtml(pozycja.temat)}
+          ${pozycja.kat_ujecia ? `<div class="kat-ujecia">${escapeHtml(pozycja.kat_ujecia)}</div>` : ""}
+        </td>
         <td class="szczegoly">${escapeHtml(pozycja.zrodlo)}</td>
         <td class="szczegoly">${escapeHtml(pozycja.do_potwierdzenia)}</td>
         <td>
@@ -2374,7 +2457,44 @@ function widokPlanu(dane) {
     )
     .join("");
 
+  // Sekcje wypracowane przez stratega. Pytania idą na górę, bo to jedyna
+  // rzecz na tym ekranie, którą operatorka ma zrobić od razu i poza aplikacją.
+  const pytaniaHtml = plan.pytania_do_firmy.length
+    ? `<div class="karta karta-propozycja">
+         <strong>Pytania do firmy</strong>
+         <p class="szczegoly">
+           Gotowe do wysłania. Odpowiedzi wpisz w Materiałach — z nich powstaną
+           posty, których nie napisze żadna konkurencja.
+         </p>
+         <ul>${plan.pytania_do_firmy.map((p) => `<li>${escapeHtml(p)}</li>`).join("")}</ul>
+         <button class="przycisk-drugorzedny" id="kopiuj-pytania">Kopiuj wszystkie</button>
+       </div>`
+    : "";
+
+  const zapasHtml = plan.zapas_tematow.length
+    ? `<details class="karta">
+         <summary><strong>Zapas tematów</strong>
+           <span class="szczegoly">(${plan.zapas_tematow.length}) — nie wymagają materiałów z firmy</span>
+         </summary>
+         <p class="szczegoly">
+           Rezerwa na chudy miesiąc. Te tematy da się napisać z samej wiedzy
+           branżowej — ale nie zastąpią postów o tym, co realnie się u Was dzieje.
+         </p>
+         <ul>${plan.zapas_tematow.map((t) => `<li>${escapeHtml(t)}</li>`).join("")}</ul>
+       </details>`
+    : "";
+
+  const ustaleniaHtml = plan.ustalenia
+    ? `<details class="karta">
+         <summary><strong>Ustalenia z researchu</strong>
+           <span class="szczegoly">— trafiają do każdego posta z tego planu</span>
+         </summary>
+         <div class="wyciag-dokumentu">${prostyMarkdown(plan.ustalenia)}</div>
+       </details>`
+    : "";
+
   return `
+    ${pytaniaHtml}
     ${brakiHtml}
     <div class="karta">
       <table class="tabela-korpusu">
@@ -2388,6 +2508,8 @@ function widokPlanu(dane) {
       <textarea id="uwagi-planu" hidden></textarea>
       <div class="log-przebiegu" id="log-planu" hidden></div>
     </div>
+    ${ustaleniaHtml}
+    ${zapasHtml}
   `;
 }
 
@@ -2402,6 +2524,18 @@ function podepnijAkcjePlanu(dane) {
 
   const zbuduj = document.getElementById("przycisk-zbuduj-plan");
   if (zbuduj) zbuduj.addEventListener("click", zbudujPlan);
+
+  const kopiujPytania = document.getElementById("kopiuj-pytania");
+  if (kopiujPytania) {
+    kopiujPytania.addEventListener("click", (zdarzenie) => {
+      const tekst =
+        `Cześć! Kilka pytań do postów na ${nazwaMiesiaca(miesiacPlanu)} — ` +
+        "jedno zdanie na każde w zupełności wystarczy:\n\n" +
+        dane.plan.pytania_do_firmy.map((p) => `• ${p}`).join("\n") +
+        "\n\nDzięki!";
+      kopiujDoSchowka(tekst, zdarzenie.target);
+    });
+  }
 
   document.querySelectorAll("[data-status-dla]").forEach((wybor) => {
     wybor.addEventListener("change", async () => {
@@ -2424,11 +2558,16 @@ function podepnijAkcjePlanu(dane) {
       briefZPlanu = [
         `Temat: ${pozycja.temat}`,
         pozycja.typ ? `Rodzaj posta: ${pozycja.typ}` : "",
+        pozycja.kat_ujecia ? `Kąt ujęcia: ${pozycja.kat_ujecia}` : "",
         pozycja.zrodlo ? `Źródło: ${pozycja.zrodlo}` : "",
         pozycja.do_potwierdzenia ? `Do potwierdzenia: ${pozycja.do_potwierdzenia}` : "",
       ]
         .filter(Boolean)
         .join("\n");
+      // Ustalenia z researchu jadą razem z tematem. Strateg już za ten research
+      // zapłacił — bez tego redaktor szukałby tych samych faktów od nowa
+      // albo, co gorsza, pisał bez nich.
+      zrodloZPlanu = dane.plan.ustalenia || "";
       przejdzDoZakladki("posty");
     });
   });

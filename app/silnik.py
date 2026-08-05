@@ -144,6 +144,11 @@ LIMIT_USD_WYCIAG = 1.50
 # Wywiad to jedna wymiana zdań naraz, ale ostatnia tura zwraca treść dwóch
 # plików — stąd sufit wyższy niż w zwykłym czacie.
 LIMIT_USD_WYWIAD = 0.60
+# Przegląd branży chodzi po sieci przez podagenta — najdroższa operacja
+# w aplikacji. Zmierzony realny przebieg: 1,31 USD przy pełnej liście źródeł,
+# więc sufit 1,50 byłby na styk i ucinałby przegląd w połowie. Robi się go raz
+# na kilka tygodni, a wynik służy potem wszystkim postom i planowi.
+LIMIT_USD_PRZEGLAD = 2.50
 
 # Ile tur agenta wolno wykonać. Bez tego zapętlony agent (np. gdy zapis
 # pliku raz za razem się nie udaje) potrafi spalić limit w całości.
@@ -327,23 +332,58 @@ PROMPT_STRATEG = (
     "newsach branżowych jest nieodróżnialny od konkurencji — to zdiagnozowany "
     "problem tego klienta, nie hipoteza. Krótszy, ale konkretny plan jest "
     "poprawnym wynikiem; rozdmuchany plan z samych newsów jest błędem.\n\n"
+    "ILE MASZ ZROBIĆ SAM\n"
+    "Operatorka jest jedną osobą i nie ma czasu domyślać się, co miałeś na "
+    "myśli. Krótkość dotyczy LICZBY POZYCJI, a nie tego, ile pracy wykonujesz "
+    "przy każdej z nich. Przy każdej pozycji planu masz podać konkretny kąt "
+    "ujęcia: od czego zacząć post i dlaczego akurat Forces DC ma w tej sprawie "
+    "coś do powiedzenia jako wykonawca fit-outu, a nie komentator cudzych "
+    "newsów. „Post o rynku data center” to zła pozycja; „Moc rośnie o 18%, "
+    "ale wąskim gardłem są ekipy — pokazać to od strony czasu montażu” to "
+    "dobra.\n\n"
+    "Zamiast pisać, że czegoś brakuje, sformułuj GOTOWE PYTANIE do wysłania "
+    "do firmy — takie, na które da się odpowiedzieć jednym zdaniem. Nie "
+    "„brakuje danych o realizacji”, tylko „Ile osób pracowało przy odbiorze "
+    "w lipcu i ile to trwało od wejścia na plac?”.\n\n"
+    "Zapisz też wszystko, co ustaliłeś w researchu: liczby, daty wydarzeń, "
+    "nazwy instytucji, adresy źródeł. Redaktor dostanie te ustalenia przy "
+    "pisaniu każdego posta z tego planu, więc nie będzie ich szukał od nowa. "
+    "Research jest najdroższą operacją w tej aplikacji — ma być zrobiony raz.\n\n"
+    "Na koniec zaproponuj zapas tematów: 3–5 tematów eksperckich, które da "
+    "się napisać z samej wiedzy branżowej i doświadczenia firmy, BEZ nowych "
+    "materiałów z firmy. To nie są pozycje planu i nie wliczają się do niego "
+    "— to rezerwa na wypadek, gdyby miesiąc okazał się chudy. Oznacz je jako "
+    "zapas, żeby nikt nie pomylił ich z tematami opartymi na realnych "
+    "wydarzeniach.\n\n"
     "Zapisz wynik narzędziem Write pod ścieżką WZGLĘDNĄ `plan/RRRR-MM.md` "
     "(dla wskazanego miesiąca). WAŻNE: podaj dokładnie taką względną ścieżkę, "
     "zaczynającą się od 'plan/' — bez ścieżki bezwzględnej, Twój katalog "
     "roboczy już wskazuje właściwe miejsce. Użyj DOKŁADNIE tej struktury, "
     "bo inny program parsuje ten plik:\n\n"
     "# Plan na RRRR-MM\n\n"
-    "| # | Data | Typ | Temat | Źródło | Do potwierdzenia | Status |\n"
-    "|---|---|---|---|---|---|---|\n"
-    "| 1 | RRRR-MM-DD | <typ z listy> | <temat> | <źródło lub materiały z firmy> "
+    "| # | Data | Typ | Temat | Kąt ujęcia | Źródło | Do potwierdzenia | Status |\n"
+    "|---|---|---|---|---|---|---|---|\n"
+    "| 1 | RRRR-MM-DD | <typ z listy> | <temat> | <od czego zacząć i dlaczego "
+    "Forces DC ma tu głos — jedno-dwa zdania> | <źródło lub materiały z firmy> "
     "| <czego brakuje, puste jeśli nic> | szkic |\n\n"
+    "## Ustalenia z researchu\n\n"
+    "<fakty, liczby, daty wydarzeń i adresy źródeł zebrane przy budowaniu "
+    "tego planu — tekstem albo listą; napisz 'Brak zapisanych ustaleń.', "
+    "jeśli research niczego nie dał>\n\n"
+    "## Pytania do firmy\n\n"
+    "<lista punktowana gotowych pytań do wysłania, każdy punkt od '- ', "
+    "albo dokładnie 'Brak pytań.'>\n\n"
+    "## Zapas tematów\n\n"
+    "<lista punktowana tematów eksperckich niewymagających materiałów z firmy, "
+    "każdy punkt od '- ', albo dokładnie 'Brak zapasu.'>\n\n"
     "## Czego zabrakło\n\n"
     "<lista punktowana, każdy punkt od '- ', albo dokładnie 'Brak uwag.'>\n\n"
     "Dozwolone wartości kolumny Typ: branzowy, realizacja, zajawka-eventu, "
     "prelegent, partner, employer-branding, ekspercki, event-relacja, "
     "obecnosc-branzowa, podsumowanie, okolicznosciowy. "
     "W kolumnie Status wpisuj zawsze 'szkic'. W treści tabeli nie używaj "
-    "znaku '|' — rozbija kolumny."
+    "znaku '|' — rozbija kolumny. Dłuższe wywody zostaw do sekcji pod tabelą; "
+    "w kolumnie „Kąt ujęcia” zmieść się w jednym-dwóch zdaniach."
 )
 
 # Nazwa narzędzia MCP tak, jak zobaczy ją model i jak trafia do allowed_tools/
@@ -748,6 +788,64 @@ async def uruchom_wywiad(
 
     yield {"typ": "status", "tekst": "Zbieram, co już wiadomo…"}
     async for zdarzenie in _przetworz_zapytanie(opcje, "\n\n".join(czesci)):
+        yield zdarzenie
+
+
+PROMPT_PRZEGLAD_BRANZY = (
+    "Jesteś researcherem branżowym Forces DC (fit-out data center, region "
+    f"nordycki). {GRANICA_NDA} {ZAKAZ_TRESCI_PRAWNYCH}\n\n"
+    "Zadanie: sprawdź, co dzieje się teraz w branży data center w Norwegii "
+    "i regionie nordyckim, i zapisz to w formie, z której da się potem "
+    "budować plan miesiąca i pisać posty. Korzystaj ze źródeł podanych "
+    "w poleceniu — zaczynaj od poziomu 1.\n\n"
+    "Piszesz po polsku, nawet jeśli źródła są po angielsku albo norwesku. "
+    "Przy KAŻDYM fakcie podaj adres, z którego pochodzi. Fakt bez adresu jest "
+    "bezwartościowy — pomiń go zamiast zgadywać. Nie przeliczaj i nie "
+    "zaokrąglaj liczb.\n\n"
+    "Zwróć DOKŁADNIE takie sekcje i nic poza nimi:\n\n"
+    "## O czym jest\n"
+    "Dwa–trzy zdania: co się w tej chwili dzieje w branży, jednym akapitem.\n\n"
+    "## Fakty i liczby\n"
+    "Lista konkretów z ostatnich ~30 dni: dane, decyzje, inwestycje, zmiany "
+    "regulacyjne. Każdy punkt z adresem źródła i datą.\n\n"
+    "## Kalendarz\n"
+    "Nadchodzące wydarzenia branżowe z datami i miejscem. Jeśli nie znajdziesz "
+    "żadnego, napisz to wprost.\n\n"
+    "## Tematy na posty dla Forces DC\n"
+    "3–6 zajawek: konkretny kąt, z którego Forces DC może się odnieść ze swojej "
+    "perspektywy — wykonawcy fit-outu i dostawcy zespołów. Każda zajawka to "
+    "zdanie tematu plus zdanie, dlaczego akurat ta firma ma tu coś do "
+    "powiedzenia. Odrzucaj tematy, w których byłaby tylko komentatorem.\n\n"
+    "## Czego tu nie ma\n"
+    "Czego nie udało się ustalić, a przydałoby się do postów."
+)
+
+
+async def zrob_przeglad_branzy(
+    katalog_danych: Path, zrodla: str
+) -> AsyncIterator[dict[str, Any]]:
+    """Research branżowy uruchamiany na żądanie, niezależnie od planu.
+
+    Wynik zapisuje backend do `artykuly/wyciagi/` — tam, gdzie leżą wyciągi
+    z dokumentów, więc trafia automatycznie i do planu, i do każdego posta.
+    Dzięki temu research jest opłacony raz, a nie przy każdym użyciu.
+    """
+    opcje = zbuduj_opcje(
+        katalog_danych,
+        PROMPT_PRZEGLAD_BRANZY,
+        agents={"researcher": SUBAGENT_RESEARCHER},
+        dodatkowe_dozwolone_narzedzia=["WebSearch", "WebFetch"],
+        narzedzia=["Agent", "WebSearch", "WebFetch"],
+        limit_usd=LIMIT_USD_PRZEGLAD,
+        maks_tur=20,
+    )
+    polecenie = (
+        f"Dzisiejsza data: {date.today().isoformat()}.\n\n"
+        f"### Źródła, z których masz korzystać\n{zrodla}\n\n"
+        "Zrób przegląd branży i zwróć go w opisanym formacie."
+    )
+    yield {"typ": "status", "tekst": "Przeglądam źródła branżowe…"}
+    async for zdarzenie in _przetworz_zapytanie(opcje, polecenie):
         yield zdarzenie
 
 

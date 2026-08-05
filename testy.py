@@ -265,6 +265,97 @@ def test_material_zrodlowy_od_operatora() -> None:
             "Materiał źródłowy od operatora" not in bez)
 
 
+PLAN_NOWY = """# Plan na 2026-09
+
+| # | Data | Typ | Temat | Kąt ujęcia | Źródło | Do potwierdzenia | Status |
+|---|---|---|---|---|---|---|---|
+| 1 | 2026-09-03 | branzowy | Waskie gardlo branzy | Moc rosnie o 18%, ale brakuje ekip — pokazac od strony czasu montazu. | NDI, digi.no | | szkic |
+| 2 | 2026-09-12 | realizacja | Odbior w regionie Oslo | Pokazac, ile trwalo od wejscia na plac. | materialy z firmy | liczba dni | szkic |
+
+## Ustalenia z researchu
+
+- Moc zainstalowana: 410 MW, +18% rok do roku (datasenterindustrien.no).
+- Konferencja NDI w Trondheim, wrzesien 2026.
+
+## Pytania do firmy
+
+- Ile osob pracowalo przy odbiorze w lipcu i ile to trwalo od wejscia na plac?
+- Czy ktos z zespolu jedzie na konferencje NDI we wrzesniu?
+
+## Zapas tematów
+
+- Czym rozni sie fit-out data center od zwyklej budowy — trzy rzeczy.
+- Jakie uprawnienia realnie musi miec monter na obiekcie DC.
+
+## Czego zabrakło
+
+- Brak danych o wrzesniowych startach projektow.
+"""
+
+PLAN_STARY = """# Plan na 2026-07
+
+| # | Data | Typ | Temat | Źródło | Do potwierdzenia | Status |
+|---|---|---|---|---|---|---|
+| 1 | 2026-07-03 | branzowy | Stary format planu | NDI | | szkic |
+
+## Czego zabrakło
+
+Brak uwag.
+"""
+
+
+def test_plan_niesie_prace_stratega() -> None:
+    katalog = katalog_testowy()
+    (katalog / "plan").mkdir(parents=True, exist_ok=True)
+    (katalog / "plan" / "2026-09.md").write_text(PLAN_NOWY, encoding="utf-8")
+
+    plan = pliki.wczytaj_plan(katalog, "2026-09")
+    sprawdz("plan ma obie pozycje", len(plan.pozycje) == 2, f"jest {len(plan.pozycje)}")
+    sprawdz("kąt ujęcia jest odczytany",
+            plan.pozycje[0].kat_ujecia.startswith("Moc rosnie o 18%"),
+            plan.pozycje[0].kat_ujecia)
+    sprawdz("ustalenia z researchu są odczytane", "410 MW" in plan.ustalenia)
+    sprawdz("pytania do firmy są odczytane jako lista",
+            len(plan.pytania_do_firmy) == 2, f"jest {len(plan.pytania_do_firmy)}")
+    sprawdz("zapas tematów jest odczytany", len(plan.zapas_tematow) == 2)
+    sprawdz("czego zabrakło nadal działa", len(plan.czego_zabraklo) == 1)
+    sprawdz("temat nie wchłonął kąta ujęcia", plan.pozycje[0].temat == "Waskie gardlo branzy")
+
+
+def test_stary_plan_nadal_sie_wczytuje() -> None:
+    """Plany zbudowane przed dodaniem kolumny „Kąt ujęcia" mają dalej działać."""
+    katalog = katalog_testowy()
+    (katalog / "plan").mkdir(parents=True, exist_ok=True)
+    (katalog / "plan" / "2026-07.md").write_text(PLAN_STARY, encoding="utf-8")
+
+    plan = pliki.wczytaj_plan(katalog, "2026-07")
+    sprawdz("stary plan się wczytuje", plan.istnieje and len(plan.pozycje) == 1)
+    sprawdz("stary plan ma poprawny temat", plan.pozycje[0].temat == "Stary format planu")
+    sprawdz("stary plan ma poprawne źródło", plan.pozycje[0].zrodlo == "NDI")
+    sprawdz("brakujący kąt ujęcia zostaje pusty", plan.pozycje[0].kat_ujecia == "")
+    sprawdz("brak nowych sekcji nie psuje odczytu",
+            plan.ustalenia == "" and plan.pytania_do_firmy == [])
+
+
+def test_zmiana_statusu_nie_gubi_pracy_stratega() -> None:
+    """Zmiana statusu przepisuje cały plik — nie może przy tym skasować
+    ustaleń, pytań ani kątów ujęcia."""
+    katalog = katalog_testowy()
+    (katalog / "plan").mkdir(parents=True, exist_ok=True)
+    (katalog / "plan" / "2026-09.md").write_text(PLAN_NOWY, encoding="utf-8")
+
+    pliki.zmien_status_pozycji(katalog, "2026-09", 0, "zatwierdzony")
+    plan = pliki.wczytaj_plan(katalog, "2026-09")
+
+    sprawdz("status się zmienił", plan.pozycje[0].status == "zatwierdzony")
+    sprawdz("ustalenia przetrwały zmianę statusu", "410 MW" in plan.ustalenia)
+    sprawdz("pytania przetrwały zmianę statusu", len(plan.pytania_do_firmy) == 2)
+    sprawdz("zapas przetrwał zmianę statusu", len(plan.zapas_tematow) == 2)
+    sprawdz("kąt ujęcia przetrwał zmianę statusu",
+            plan.pozycje[0].kat_ujecia.startswith("Moc rosnie o 18%"))
+    sprawdz("czego zabrakło przetrwało zmianę statusu", len(plan.czego_zabraklo) == 1)
+
+
 def test_reczna_poprawka_wariantu() -> None:
     from fastapi.testclient import TestClient
 

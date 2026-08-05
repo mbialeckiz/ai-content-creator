@@ -547,6 +547,17 @@ label {
   background: var(--akcent-tlo);
 }
 
+/* Kąt ujęcia pod tematem — to on niesie treść pozycji, ale temat ma zostać
+   pierwszą rzeczą, jaką widać w wierszu. */
+.kat-ujecia {
+  margin-top: 0.25rem;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--tekst-drugi);
+  border-left: 2px solid var(--linia-mocna);
+  padding-left: 0.5rem;
+}
+
 /* Braki z posta: tekst po lewej, przycisk przeniesienia po prawej. */
 .lista-brakow {
   list-style: disc;
@@ -572,6 +583,7 @@ label {
 
 /* ---------- Wywiad o stylu (SPEC 8.3) ---------- */
 
+.karta-przeglad,
 .karta-wywiad {
   display: flex;
   align-items: center;
@@ -582,8 +594,16 @@ label {
   background: var(--akcent-tlo);
 }
 
-.karta-wywiad .przycisk-glowny {
+.karta-wywiad .przycisk-glowny,
+.karta-przeglad .przycisk-drugorzedny {
   flex-shrink: 0;
+}
+
+/* Przegląd branży jest pomocniczy, nie główną akcją tego ekranu — stonowany
+   wygląd, żeby nie konkurował wzrokowo z „Zbuduj plan". */
+.karta-przeglad {
+  border-color: var(--linia-mocna);
+  background: var(--tlo-podniesione);
 }
 
 /* Wypowiedzi asystenta w wywiadzie są dłuższe niż w zwykłym czacie i mają

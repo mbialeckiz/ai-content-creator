@@ -11,6 +11,7 @@ import tempfile
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import date
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -856,6 +857,49 @@ async def api_plan(miesiac: str) -> JSONResponse:
             "statusy": list(pliki.STATUSY_PLANU),
         }
     )
+
+
+async def _strumien_przegladu(nazwa_pliku: str) -> AsyncIterator[str]:
+    katalog = katalog_danych()
+    zrodla = pliki.czytaj_plik_jakosci(katalog, "zrodla-branzowe")
+
+    zebrane: list[str] = []
+    async for zdarzenie in silnik.zrob_przeglad_branzy(katalog, zrodla):
+        if zdarzenie["typ"] == "fragment":
+            zebrane.append(zdarzenie["tekst"])
+            continue
+        if zdarzenie["typ"] == "wynik":
+            tresc = "".join(zebrane).strip()
+            if not tresc:
+                zdarzenie["blad_przegladu"] = (
+                    "Asystent nie zwrócił przeglądu. Sprawdź, czy komputer ma "
+                    "połączenie z internetem, i spróbuj jeszcze raz."
+                )
+            else:
+                try:
+                    pliki.zapisz_wyciag(katalog, nazwa_pliku, tresc)
+                    zdarzenie["przeglad"] = tresc
+                    zdarzenie["plik"] = nazwa_pliku
+                except OSError as blad:
+                    logger.error("Nie udało się zapisać przeglądu branży: %s", blad)
+                    zdarzenie["blad_przegladu"] = (
+                        "Przegląd powstał, ale nie udało się go zapisać — sprawdź, "
+                        "czy folder danych jest dostępny."
+                    )
+        yield _jako_sse(zdarzenie)
+
+
+@app.post("/api/przeglad-branzy", response_model=None)
+async def api_przeglad_branzy() -> StreamingResponse:
+    """Research branżowy na żądanie (bez harmonogramu — CLAUDE.md).
+
+    Wynik ląduje wśród wyciągów z dokumentów, więc od razu zasila i plan
+    miesiąca, i każdy pisany post. Research jest najdroższą operacją
+    w aplikacji, a tak płaci się za niego raz na kilka tygodni zamiast
+    przy każdym budowaniu planu.
+    """
+    nazwa = f"przeglad-branzy-{date.today().isoformat()}"
+    return StreamingResponse(_strumien_przegladu(nazwa), media_type="text/event-stream")
 
 
 class PolecenieStratega(BaseModel):

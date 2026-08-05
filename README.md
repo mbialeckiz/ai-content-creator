@@ -89,6 +89,43 @@ zamiast zgadywania. Zweryfikowano względem `claude-agent-sdk==0.2.128`
   wewnątrz generatora `StreamingResponse` FastAPI nie blokuje event loopa,
   osobny wątek/task nie jest potrzebny.
 
+## Plan miesiąca — co asystent robi sam
+
+Poza tabelą pozycji plan zawiera cztery rzeczy, których operatorka nie musi
+wymyślać:
+
+- **Kąt ujęcia** przy każdej pozycji — od czego zacząć post i dlaczego akurat
+  Forces DC ma w tej sprawie głos jako wykonawca, a nie komentator newsów.
+  Jedzie razem z tematem, gdy klikniesz „Napisz".
+- **Pytania do firmy** — gotowe do wysłania, jednym kliknięciem do schowka.
+  Zamiast „brakuje danych o realizacji" jest „Ile osób pracowało przy odbiorze
+  w lipcu i ile to trwało od wejścia na plac?".
+- **Ustalenia z researchu** — fakty, liczby i adresy zebrane przy budowaniu
+  planu. Trafiają do pola „Materiał źródłowy" przy każdym poście z tego planu,
+  więc research jest opłacony raz.
+- **Zapas tematów** — 3–5 tematów eksperckich niewymagających materiałów
+  z firmy, jawnie oznaczonych jako rezerwa na chudy miesiąc.
+
+Reguła ze SPEC 8.1 zostaje bez zmian: przy pustych materiałach plan jest
+KRÓTSZY, a nie dopchany newsami. Zmieniło się to, ile pracy asystent wkłada
+w każdą pozycję, a nie ile pozycji wymyśla.
+
+## Przegląd branży (research na żądanie)
+
+Ekran „Plan" → **„Zrób przegląd branży"**. Asystent przechodzi źródła
+z `zrodla-branzowe.md` i zapisuje datowaną notatkę do
+`dane/artykuly/wyciagi/przeglad-branzy-RRRR-MM-DD.md`: fakty z adresami,
+kalendarz wydarzeń, tematy na posty, czego nie udało się ustalić.
+
+Ponieważ ląduje wśród wyciągów z dokumentów, od razu zasila i plan miesiąca,
+i każdy pisany post — bez przeklejania.
+
+**Kosztuje ok. 1,30 USD i trwa kilka minut** (zmierzone: 1,31 USD, 33 tury) —
+to najdroższa operacja w aplikacji. Dlatego jest osobnym przyciskiem, a nie
+automatem: robi się go raz na kilka tygodni, nie przed każdym postem.
+Harmonogramów świadomie nie ma (CLAUDE.md) — nikt nie utrzyma czegoś, co
+wydaje pieniądze bez patrzenia.
+
 ## Poprawianie posta — dwie drogi
 
 - **„Popraw"** — jednolinijkowe polecenie („skróć o połowę", „mniej
