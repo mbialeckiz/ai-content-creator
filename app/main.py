@@ -297,6 +297,62 @@ async def api_zapisz_plik(identyfikator: str, dane: TrescPliku) -> JSONResponse:
     return JSONResponse({"zapisano": True, "luki": pliki.policz_luki(dane.tresc)})
 
 
+class WpisRozmowy(BaseModel):
+    rola: str  # "operator" albo "asystent"
+    tresc: str
+
+
+class TuraWywiadu(BaseModel):
+    # Historię rozmowy trzyma przeglądarka i odsyła przy każdej turze —
+    # pojedyncze wywołanie SDK nie pamięta poprzednich (SPEC 8.3).
+    historia: list[WpisRozmowy] = []
+    # Kliknięcie „Zakończ i pokaż propozycję". Osobne pole, a nie zdanie
+    # w czacie: o zdanie model się dopytywał zamiast kończyć.
+    zakoncz: bool = False
+
+
+async def _strumien_wywiadu(historia: list[WpisRozmowy], zakoncz: bool = False) -> AsyncIterator[str]:
+    katalog = katalog_danych()
+    material = pliki.zbuduj_material_dla_wywiadu(katalog)
+    jako_slowniki = [{"rola": wpis.rola, "tresc": wpis.tresc} for wpis in historia]
+
+    zebrane: list[str] = []
+    async for zdarzenie in silnik.uruchom_wywiad(katalog, material, jako_slowniki, zakoncz):
+        if zdarzenie["typ"] == "fragment":
+            # Fragmenty zbieramy zamiast wysyłać na bieżąco: propozycję pliku
+            # da się wyciąć dopiero z całości, a operatorka nie ma oglądać
+            # surowych znaczników przelatujących przez ekran.
+            zebrane.append(zdarzenie["tekst"])
+            continue
+        if zdarzenie["typ"] == "wynik":
+            tekst, propozycje = pliki.wytnij_propozycje_wywiadu("".join(zebrane))
+            zdarzenie["odpowiedz"] = tekst
+            zdarzenie["propozycje_plikow"] = propozycje
+            if zakoncz and not propozycje:
+                zdarzenie["blad_propozycji"] = (
+                    "Asystent nie zwrócił gotowej treści do zapisania. Kliknij "
+                    "„Zakończ i pokaż propozycję” jeszcze raz — jeśli to się "
+                    "powtórzy, odpowiedz mu w rozmowie, żeby pokazał propozycję."
+                )
+        yield _jako_sse(zdarzenie)
+
+
+@app.post("/api/wywiad", response_model=None)
+async def api_wywiad(dane: TuraWywiadu) -> JSONResponse | StreamingResponse:
+    """Tryb Wywiad (SPEC 8.3): rozmowa domykająca głos marki i rodzaje postów.
+
+    Agent nie zapisuje plików — na końcu proponuje treść, a operatorka
+    zatwierdza ją przyciskiem, który trafia do `PUT /api/pliki/{id}`.
+    """
+    ostatnia = dane.historia[-1].tresc if dane.historia else ""
+    blokada = _blokada_nda_lub_none(ostatnia)
+    if blokada:
+        return blokada
+    return StreamingResponse(
+        _strumien_wywiadu(dane.historia, dane.zakoncz), media_type="text/event-stream"
+    )
+
+
 # --- Ekran „Korpus" (SPEC 8.5, SPEC-frontend 10) ---
 
 

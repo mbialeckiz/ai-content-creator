@@ -1402,15 +1402,221 @@ async function renderujStyl() {
       Tu zmieniasz sposób, w jaki asystent pisze. Zmiany działają od następnej
       rozmowy — nie trzeba nic restartować.
     </p>
+    <div class="karta karta-wywiad">
+      <div>
+        <strong>Nie wiesz, co tu wpisać?</strong>
+        <p class="szczegoly" style="margin:0.3rem 0 0">
+          Asystent przejrzy Wasze opublikowane posty, powie, co z nich odczytał,
+          i dopyta tylko o to, czego nie da się z nich wyczytać. Na koniec
+          zaproponuje gotową treść „Głosu marki" i „Rodzajów postów"
+          — zapisujesz jednym kliknięciem albo odrzucasz.
+        </p>
+      </div>
+      <button class="przycisk-glowny" id="przycisk-wywiad">Porozmawiaj o stylu</button>
+    </div>
     <div class="zakladki-plikow">${zakladki}</div>
     <div id="edytor-stylu"></div>
   `;
+
+  document.getElementById("przycisk-wywiad").addEventListener("click", renderujWywiad);
 
   OBSZAR.querySelectorAll(".zakladka-pliku").forEach((przycisk) => {
     przycisk.addEventListener("click", () => otworzPlikStylu(przycisk.dataset.plik, dane.pliki));
   });
 
   if (dane.pliki.length) otworzPlikStylu(dane.pliki[0].id, dane.pliki);
+}
+
+// --- Wywiad o stylu (SPEC 8.3, SPEC-frontend 9) ---
+//
+// Rozmowa żyje w przeglądarce i wraca do serwera przy każdej turze: pojedyncze
+// wywołanie asystenta nie pamięta poprzednich. Na końcu asystent proponuje
+// treść plików, ale ich nie zapisuje — zapis to osobne kliknięcie operatorki.
+
+let rozmowaWywiadu = [];
+
+function renderujWywiad() {
+  rozmowaWywiadu = [];
+  OBSZAR.innerHTML = `
+    <h2>Rozmowa o stylu</h2>
+    <p class="szczegoly">
+      Odpowiadaj własnymi słowami — asystent pyta o jedną rzecz naraz.
+      Możesz przerwać w dowolnym momencie i wrócić do tego później;
+      nic nie zapisze się bez Twojej zgody.
+    </p>
+    <div class="karta" id="wywiad-historia" style="min-height:300px;max-height:58vh;overflow-y:auto"></div>
+    <form id="wywiad-formularz" style="display:flex;gap:0.5rem;margin-top:0.75rem">
+      <textarea id="wywiad-pole" rows="2" style="flex:1"
+        placeholder="Twoja odpowiedź — Enter wysyła, Shift+Enter robi nową linię"></textarea>
+      <button class="przycisk-glowny" type="submit">Wyślij</button>
+    </form>
+    <div class="pasek-narzedzi" style="margin-top:0.75rem">
+      <button class="przycisk-drugorzedny" id="wywiad-zakoncz">Zakończ i pokaż propozycję</button>
+      <button class="przycisk-drugorzedny" id="wywiad-wroc">Wróć do ustawień</button>
+    </div>
+  `;
+
+  document.getElementById("wywiad-formularz").addEventListener("submit", (zdarzenie) => {
+    zdarzenie.preventDefault();
+    wyslijTureWywiadu();
+  });
+  const pole = document.getElementById("wywiad-pole");
+  pole.addEventListener("keydown", (zdarzenie) => {
+    if (zdarzenie.key === "Enter" && !zdarzenie.shiftKey && !zdarzenie.isComposing) {
+      zdarzenie.preventDefault();
+      wyslijTureWywiadu();
+    }
+  });
+  document.getElementById("wywiad-zakoncz").addEventListener("click", () => {
+    if (!rozmowaWywiadu.some((wpis) => wpis.rola === "operator")) {
+      dodajWpisWywiadu(
+        "asystent",
+        "Najpierw odpowiedz choć na jedno pytanie — bez tego nie ma z czego zbudować zasad."
+      );
+      return;
+    }
+    wyslijTureWywiadu({ zakoncz: true });
+  });
+  document.getElementById("wywiad-wroc").addEventListener("click", renderujStyl);
+
+  // Pierwszą turę wywołujemy sami — rozmowę zaczyna asystent, nie operatorka.
+  wyslijTureWywiadu({ pierwsza: true });
+}
+
+function dodajWpisWywiadu(rola, tresc) {
+  const historia = document.getElementById("wywiad-historia");
+  const wpis = document.createElement("div");
+  wpis.className = `wiadomosc-czatu ${rola === "operator" ? "uzytkownik" : "asystent"}`;
+  if (rola === "operator") {
+    wpis.textContent = tresc;
+  } else {
+    wpis.classList.add("tresc-wywiadu");
+    wpis.innerHTML = prostyMarkdown(tresc);
+  }
+  historia.appendChild(wpis);
+  historia.scrollTop = historia.scrollHeight;
+  return wpis;
+}
+
+async function wyslijTureWywiadu({ pierwsza = false, zakoncz = false } = {}) {
+  const pole = document.getElementById("wywiad-pole");
+  const tresc = pierwsza || zakoncz ? "" : pole.value.trim();
+  if (!pierwsza && !zakoncz && !tresc) return;
+
+  if (tresc) {
+    rozmowaWywiadu.push({ rola: "operator", tresc });
+    dodajWpisWywiadu("operator", tresc);
+    pole.value = "";
+  }
+
+  const czekacz = dodajWpisWywiadu(
+    "asystent",
+    pierwsza ? "Przeglądam Wasze posty…" : zakoncz ? "Spisuję ustalenia…" : "Myślę…"
+  );
+  pole.disabled = true;
+
+  let odpowiedz;
+  try {
+    odpowiedz = await fetch("/api/wywiad", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ historia: rozmowaWywiadu, zakoncz }),
+    });
+  } catch (blad) {
+    czekacz.innerHTML = `<p class="instrukcja-naprawy">Nie udało się połączyć z serwerem (${escapeHtml(blad.message)}).</p>`;
+    pole.disabled = false;
+    return;
+  }
+
+  if ((odpowiedz.headers.get("content-type") || "").includes("application/json")) {
+    const dane = await odpowiedz.json();
+    czekacz.outerHTML = dane.zablokowane_nda
+      ? elementBlokadyNda(dane.fraza)
+      : `<p class="instrukcja-naprawy">${escapeHtml(dane.blad || "Nie udało się uruchomić rozmowy.")}</p>`;
+    pole.disabled = false;
+    return;
+  }
+
+  await strumieniujSSE(odpowiedz, (zdarzenie) => {
+    if (zdarzenie.typ === "status") {
+      czekacz.innerHTML = `<p class="placeholder">${escapeHtml(zdarzenie.tekst)}</p>`;
+    } else if (zdarzenie.typ === "blad") {
+      czekacz.innerHTML = `<p class="instrukcja-naprawy">${escapeHtml(zdarzenie.tekst)}</p>`;
+      pole.disabled = false;
+    } else if (zdarzenie.typ === "wynik") {
+      dopiszKoszt(zdarzenie.koszt_usd);
+      pole.disabled = false;
+      const tekst = zdarzenie.odpowiedz || "";
+      czekacz.innerHTML = prostyMarkdown(tekst || "(brak odpowiedzi — spróbuj jeszcze raz)");
+      if (tekst) rozmowaWywiadu.push({ rola: "asystent", tresc: tekst });
+      (zdarzenie.propozycje_plikow || []).forEach(pokazPropozycjePliku);
+      if (zdarzenie.blad_propozycji) {
+        dodajWpisWywiadu("asystent", zdarzenie.blad_propozycji);
+      }
+      pole.focus();
+    }
+  });
+}
+
+const propozycjeStylu = {};
+let licznikPropozycjiStylu = 0;
+
+function pokazPropozycjePliku(propozycja) {
+  const id = ++licznikPropozycjiStylu;
+  propozycjeStylu[id] = propozycja;
+
+  const historia = document.getElementById("wywiad-historia");
+  const karta = document.createElement("div");
+  karta.className = "karta karta-propozycja";
+  karta.innerHTML = `
+    <strong>Propozycja: ${escapeHtml(propozycja.nazwa)}</strong>
+    <p class="szczegoly">
+      Przeczytaj i zdecyduj. Zapis nadpisze obecną treść — poprzednia wersja
+      zniknie, więc jeśli nie masz pewności, skopiuj ją najpierw.
+    </p>
+    <textarea class="monospace" rows="14" style="width:100%;margin-top:0.5rem" data-tresc-propozycji="${id}">${escapeHtml(propozycja.tresc)}</textarea>
+    <div class="pasek-narzedzi" style="margin-top:0.5rem">
+      <button class="przycisk-glowny" data-zapisz-propozycje="${id}">Zapisz jako „${escapeHtml(propozycja.nazwa)}"</button>
+      <button class="przycisk-drugorzedny" data-odrzuc-propozycje="${id}">Odrzuć</button>
+      <span class="szczegoly" data-status-propozycji="${id}"></span>
+    </div>
+  `;
+  historia.appendChild(karta);
+  historia.scrollTop = historia.scrollHeight;
+
+  karta.querySelector("[data-zapisz-propozycje]").addEventListener("click", (zdarzenie) =>
+    zapiszPropozycjeStylu(id, zdarzenie.target)
+  );
+  karta.querySelector("[data-odrzuc-propozycje]").addEventListener("click", () => karta.remove());
+}
+
+async function zapiszPropozycjeStylu(id, przycisk) {
+  const propozycja = propozycjeStylu[id];
+  const pole = document.querySelector(`[data-tresc-propozycji="${id}"]`);
+  const status = document.querySelector(`[data-status-propozycji="${id}"]`);
+  przycisk.disabled = true;
+  status.textContent = "Zapisuję…";
+
+  try {
+    const odpowiedz = await fetch(`/api/pliki/${encodeURIComponent(propozycja.id)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tresc: pole.value }),
+    });
+    const dane = await odpowiedz.json();
+    if (!odpowiedz.ok) {
+      status.innerHTML = `<span class="instrukcja-naprawy">${escapeHtml(dane.blad || "Nie udało się zapisać.")}</span>`;
+      przycisk.disabled = false;
+      return;
+    }
+    status.textContent = dane.luki
+      ? `Zapisane. Zostało ${dane.luki} miejsc do uzupełnienia.`
+      : "Zapisane.";
+    przycisk.textContent = "Zapisano";
+  } catch (blad) {
+    status.innerHTML = `<span class="instrukcja-naprawy">Nie udało się połączyć z serwerem (${escapeHtml(blad.message)}).</span>`;
+    przycisk.disabled = false;
+  }
 }
 
 async function otworzPlikStylu(identyfikator, listaPlikow) {

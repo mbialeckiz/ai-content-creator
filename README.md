@@ -89,6 +89,24 @@ zamiast zgadywania. Zweryfikowano względem `claude-agent-sdk==0.2.128`
   wewnątrz generatora `StreamingResponse` FastAPI nie blokuje event loopa,
   osobny wątek/task nie jest potrzebny.
 
+## Rozmowa o stylu (tryb Wywiad)
+
+Ekran „Styl" → przycisk **„Porozmawiaj o stylu"**. Asystent przegląda
+opublikowane posty, mówi, co z nich odczytał, i dopytuje wyłącznie o to,
+czego z nich nie widać. Jedno pytanie naraz. Na końcu — po kliknięciu
+**„Zakończ i pokaż propozycję"** — zwraca gotową treść dwóch plików:
+**Głos marki** i **Rodzaje postów**.
+
+Asystent tych plików **nie zapisuje** (SPEC 8.3): propozycja pojawia się
+w edytowalnym polu, a zapis to osobne kliknięcie. Czego nie ustalono
+w rozmowie, wraca jako `[DO UZUPEŁNIENIA: ...]` — nie jako zgadnięta treść.
+
+Pytania stoją w `dane/.claude/skills/wywiad-tov/SKILL.md` i można je zmienić
+bez ruszania kodu — asystent zadaje dokładnie te, które są w pliku.
+
+Zmierzone: 0,04 USD za turę rozmowy, 0,07 USD za turę zwracającą obie
+propozycje.
+
 ## Wgrane dokumenty — jak trafiają do treści
 
 Artykuły i raporty wgrane na ekranie „Materiały" leżą w `dane/artykuly/`.

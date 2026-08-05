@@ -171,6 +171,96 @@ def wczytaj_zasady_stylu(katalog_danych: Path, limit_znakow: int = 6000) -> str:
     return "\n\n".join(czesci)[:limit_znakow]
 
 
+# Skill z pytaniami wywiadu (SPEC 8.3). Czytamy go w backendzie i wstrzykujemy
+# do polecenia — plik zostaje źródłem prawdy i da się go edytować, a asystent
+# nie traci tur na jego szukanie.
+SCIEZKA_PYTAN_WYWIADU = ".claude/skills/wywiad-tov/SKILL.md"
+
+
+def zbuduj_material_dla_wywiadu(
+    katalog_danych: Path, limit_postow: int = 8, limit_znakow_postu: int = 900
+) -> str:
+    """Komplet dla trybu Wywiad: pytania, obecny stan dwóch plików i korpus.
+
+    Korpus jest tu najważniejszy — wywiad ma zaczynać od tego, co widać
+    w opublikowanych postach, i pytać wyłącznie o luki (SPEC-frontend 9).
+    Bez niego rozmowa zamienia się w ankietę od zera, a taką operatorka
+    wypełni raz i źle.
+    """
+    czesci: list[str] = []
+
+    pytania = katalog_danych / SCIEZKA_PYTAN_WYWIADU
+    if pytania.is_file():
+        czesci.append(f"### Pytania do zadania\n{pytania.read_text(encoding='utf-8').strip()}")
+
+    for identyfikator in ("glos-marki", "rodzaje-postow"):
+        opis = PLIKI_WARSTWY_JAKOSCI[identyfikator]
+        plik = katalog_danych / opis["sciezka"]
+        tresc = plik.read_text(encoding="utf-8").strip() if plik.is_file() else ""
+        czesci.append(
+            f"### Obecna treść pliku „{opis['nazwa']}” (identyfikator: {identyfikator})\n"
+            + (tresc or "PLIK PUSTY")
+        )
+
+    from app import korpus as modul_korpusu
+
+    posty, _ = modul_korpusu.wczytaj_korpus(katalog_danych)
+    if posty:
+        najlepsze = sorted(posty, key=lambda p: p.reakcje, reverse=True)[:limit_postow]
+        wzorce = "\n\n---\n\n".join(
+            f"[typ: {p.typ}, reakcje: {p.reakcje}, znaków: {len(p.tresc)}]\n"
+            f"{p.tresc[:limit_znakow_postu]}"
+            for p in najlepsze
+        )
+        czesci.append(
+            f"### Opublikowane posty ({len(posty)} w korpusie, poniżej "
+            f"{len(najlepsze)} najlepszych)\n"
+            "To jedyne twarde źródło wiedzy o tym, jak Forces DC pisze naprawdę. "
+            "Zanim o cokolwiek zapytasz, sprawdź, czy odpowiedzi nie widać tutaj.\n\n"
+            f"{wzorce}"
+        )
+    else:
+        czesci.append(
+            "### Opublikowane posty\n"
+            "KORPUS JEST PUSTY. Powiedz o tym operatorce na samym początku: bez "
+            "opublikowanych postów nie masz z czego odczytać stylu, więc wywiad "
+            "będzie dłuższy i oprze się wyłącznie na jej odpowiedziach. "
+            "Zaproponuj, żeby najpierw wgrała posty w zakładce Korpus."
+        )
+    return "\n\n".join(czesci)
+
+
+def wytnij_propozycje_wywiadu(odpowiedz: str) -> tuple[str, list[dict[str, str]]]:
+    """Rozdziela odpowiedź wywiadu na tekst do czatu i propozycje plików.
+
+    Zwraca (tekst_bez_propozycji, lista propozycji). Propozycja bez znanego
+    identyfikatora jest odrzucana — inaczej model mógłby jednym literówkowym
+    nagłówkiem podstawić treść pod dowolny plik warstwy jakości.
+    """
+    from app.silnik import ZNACZNIK_KONCA_PROPOZYCJI, ZNACZNIK_POCZATKU_PROPOZYCJI
+
+    wzorzec = re.compile(
+        re.escape(ZNACZNIK_POCZATKU_PROPOZYCJI)
+        + r"(?P<id>[\w-]+)\s*===\s*\n(?P<tresc>.*?)"
+        + re.escape(ZNACZNIK_KONCA_PROPOZYCJI),
+        re.DOTALL,
+    )
+
+    propozycje: list[dict[str, str]] = []
+    for dopasowanie in wzorzec.finditer(odpowiedz):
+        identyfikator = dopasowanie.group("id")
+        if identyfikator not in PLIKI_WARSTWY_JAKOSCI:
+            continue
+        propozycje.append(
+            {
+                "id": identyfikator,
+                "nazwa": PLIKI_WARSTWY_JAKOSCI[identyfikator]["nazwa"],
+                "tresc": dopasowanie.group("tresc").strip(),
+            }
+        )
+    return wzorzec.sub("", odpowiedz).strip(), propozycje
+
+
 def lista_plikow_jakosci(katalog_danych: Path) -> list[dict[str, object]]:
     """Lista plików sterujących na ekran „Styl" — bez treści, z licznikiem luk."""
     wynik: list[dict[str, object]] = []

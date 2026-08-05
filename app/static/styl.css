@@ -547,6 +547,44 @@ label {
   background: var(--akcent-tlo);
 }
 
+/* ---------- Wywiad o stylu (SPEC 8.3) ---------- */
+
+.karta-wywiad {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+  border-color: var(--akcent);
+  background: var(--akcent-tlo);
+}
+
+.karta-wywiad .przycisk-glowny {
+  flex-shrink: 0;
+}
+
+/* Wypowiedzi asystenta w wywiadzie są dłuższe niż w zwykłym czacie i mają
+   nagłówki oraz listy — dymek musi je znieść bez zlewania się w jeden blok. */
+.tresc-wywiadu h3,
+.tresc-wywiadu h4,
+.tresc-wywiadu h5 {
+  font-size: 0.95rem;
+  margin: 0.8rem 0 0.3rem;
+}
+
+.tresc-wywiadu > :first-child {
+  margin-top: 0;
+}
+
+.tresc-wywiadu p {
+  margin: 0.4rem 0;
+}
+
+.tresc-wywiadu ul {
+  margin: 0.3rem 0 0.4rem 1.2rem;
+  list-style: disc;
+}
+
 /* ---------- Wyciąg z wgranego dokumentu ---------- */
 
 .wyciag-dokumentu {

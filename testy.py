@@ -265,6 +265,73 @@ def test_material_zrodlowy_od_operatora() -> None:
             "Materiał źródłowy od operatora" not in bez)
 
 
+def test_wywiad_wycina_propozycje_plikow() -> None:
+    from app.silnik import ZNACZNIK_KONCA_PROPOZYCJI, ZNACZNIK_POCZATKU_PROPOZYCJI
+
+    odpowiedz = (
+        "Dzięki! To wszystko, o co chciałem zapytać.\n\n"
+        f"{ZNACZNIK_POCZATKU_PROPOZYCJI}glos-marki ===\n"
+        "---\nname: brand-voice\n---\n\n# Głos marki\nPiszemy rzeczowo.\n"
+        f"{ZNACZNIK_KONCA_PROPOZYCJI}\n\n"
+        f"{ZNACZNIK_POCZATKU_PROPOZYCJI}rodzaje-postow ===\n"
+        "---\nname: schematy-postow\n---\n\n# Rodzaje postów\nrealizacja: 900 znaków.\n"
+        f"{ZNACZNIK_KONCA_PROPOZYCJI}\n"
+    )
+    tekst, propozycje = pliki.wytnij_propozycje_wywiadu(odpowiedz)
+
+    sprawdz("obie propozycje wykryte", len(propozycje) == 2, f"jest {len(propozycje)}")
+    sprawdz("propozycje trafiają pod właściwe pliki",
+            [p["id"] for p in propozycje] == ["glos-marki", "rodzaje-postow"])
+    sprawdz("propozycja niesie polską nazwę pliku", propozycje[0]["nazwa"] == "Głos marki")
+    sprawdz("treść propozycji jest kompletna", "Piszemy rzeczowo." in propozycje[0]["tresc"])
+    sprawdz("znaczniki nie zostają w tekście do czatu",
+            ZNACZNIK_POCZATKU_PROPOZYCJI not in tekst and ZNACZNIK_KONCA_PROPOZYCJI not in tekst)
+    sprawdz("tekst rozmowy zostaje", "To wszystko, o co chciałem zapytać." in tekst)
+
+    # Nieznany identyfikator nie może podstawić treści pod dowolny plik.
+    podszywka = (
+        f"{ZNACZNIK_POCZATKU_PROPOZYCJI}../../../etc/passwd ===\nzlosliwa\n"
+        f"{ZNACZNIK_KONCA_PROPOZYCJI}"
+    )
+    _, puste = pliki.wytnij_propozycje_wywiadu(podszywka)
+    sprawdz("propozycja pod nieznany plik jest odrzucana", puste == [], f"wyszło: {puste}")
+
+    sprawdz("zwykła odpowiedź nie niesie propozycji",
+            pliki.wytnij_propozycje_wywiadu("A jak zwracacie się do czytelnika?")[1] == [])
+
+
+def test_material_dla_wywiadu() -> None:
+    katalog = katalog_testowy()
+    material = pliki.zbuduj_material_dla_wywiadu(katalog)
+    sprawdz("przy pustym korpusie wywiad jest o tym uprzedzony",
+            "KORPUS JEST PUSTY" in material)
+    sprawdz("wywiad dostaje obecną treść obu plików",
+            "glos-marki" in material and "rodzaje-postow" in material)
+
+    (katalog / SCIEZKA_PYTAN).parent.mkdir(parents=True, exist_ok=True)
+    (katalog / SCIEZKA_PYTAN).write_text(
+        "1. Kto mówi w postach?\n2. Do kogo mówicie?\n", encoding="utf-8"
+    )
+    material = pliki.zbuduj_material_dla_wywiadu(katalog)
+    sprawdz("pytania są brane z edytowalnego pliku, nie z kodu",
+            "Kto mówi w postach?" in material)
+
+
+SCIEZKA_PYTAN = pliki.SCIEZKA_PYTAN_WYWIADU
+
+
+def test_wywiad_nie_ma_prawa_zapisu() -> None:
+    """SPEC 8.3: agent proponuje treść, ale nie modyfikuje plików sam."""
+    opcje = silnik.zbuduj_opcje(
+        katalog_testowy(), silnik.PROMPT_WYWIAD, bez_narzedzi=True, limit_usd=0.6
+    )
+    dozwolone = list(getattr(opcje, "allowed_tools", []) or [])
+    sprawdz("wywiad nie dostaje narzędzia Write", "Write" not in dozwolone, f"{dozwolone}")
+    sprawdz("wywiad nie dostaje żadnych narzędzi", not dozwolone, f"{dozwolone}")
+    sprawdz("prompt wywiadu mówi wprost, że nic nie zapisuje",
+            "NICZEGO NIE ZAPISUJESZ" in silnik.PROMPT_WYWIAD)
+
+
 def test_wyciagi_z_dokumentow() -> None:
     katalog = katalog_testowy()
     (katalog / "artykuly").mkdir(parents=True, exist_ok=True)

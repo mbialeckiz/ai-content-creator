@@ -141,6 +141,9 @@ LIMIT_USD_PLAN = 2.00  # plan miesiąca czyta więcej i robi research, ma wyższ
 # ważyć więcej niż wszystko inne w tej aplikacji razem wzięte — stąd osobny,
 # wyższy sufit. Koszt jest jednorazowy i pokazywany operatorce przed kliknięciem.
 LIMIT_USD_WYCIAG = 1.50
+# Wywiad to jedna wymiana zdań naraz, ale ostatnia tura zwraca treść dwóch
+# plików — stąd sufit wyższy niż w zwykłym czacie.
+LIMIT_USD_WYWIAD = 0.60
 
 # Ile tur agenta wolno wykonać. Bez tego zapętlony agent (np. gdy zapis
 # pliku raz za razem się nie udaje) potrafi spalić limit w całości.
@@ -637,6 +640,114 @@ async def uruchom_asystenta(katalog_danych: Path, wiadomosc: str) -> AsyncIterat
     async for zdarzenie in _przetworz_zapytanie(
         opcje, wiadomosc, narzedzie_propozycji=NAZWA_NARZEDZIA_PROPOZYCJI
     ):
+        yield zdarzenie
+
+
+# Znaczniki, po których backend rozpoznaje w odpowiedzi gotową propozycję
+# treści pliku. Agent nie ma prawa zapisu do warstwy jakości (SPEC 8.3:
+# „nie modyfikuje tego pliku samodzielnie"), więc propozycja wraca tekstem,
+# a zapisuje ją dopiero operatorka jednym kliknięciem.
+ZNACZNIK_POCZATKU_PROPOZYCJI = "=== PROPOZYCJA: "
+ZNACZNIK_KONCA_PROPOZYCJI = "=== KONIEC PROPOZYCJI ==="
+
+PROMPT_WYWIAD = (
+    "Prowadzisz rozmowę z Magdą — osobą nietechniczną, która zajmuje się "
+    "contentem Forces DC (fit-out data center, region nordycki). Celem "
+    "rozmowy jest domknięcie dwóch rzeczy: **jak Forces DC pisze** (głos "
+    "marki) oraz **jakie typy postów publikuje i jak są zbudowane** "
+    "(rodzaje postów).\n\n"
+    "Piszesz po polsku, bez żargonu technicznego: nie mów „prompt”, „agent”, "
+    f"„skill”, „plik SKILL.md”. Mów „zasady stylu”, „asystent”. {GRANICA_NDA}\n\n"
+    "JAK PROWADZISZ ROZMOWĘ\n"
+    "- Zaczynasz od krótkiego podsumowania tego, co już widzisz w "
+    "opublikowanych postach: ton, długość, sposób zwracania się do "
+    "czytelnika, hashtagi. Konkretnie, z przykładami i liczbami — nie "
+    "ogólnikami. To pokazuje, że nie pytasz o rzeczy, które już wiesz.\n"
+    "- Potem zadajesz JEDNO pytanie i czekasz na odpowiedź. Nigdy kilku "
+    "naraz — to najczęstszy błąd i przez niego takie rozmowy się urywają.\n"
+    "- Jeśli odpowiedź na pytanie widać już w korpusie, nie pytaj od zera: "
+    "powiedz, co odczytałeś, i poproś o potwierdzenie albo poprawkę.\n"
+    "- Pytania i ich kolejność masz podane w poleceniu. Możesz pominąć te, "
+    "na które korpus już odpowiada, ale powiedz wtedy, że je pomijasz i "
+    "dlaczego.\n"
+    "- Po każdej odpowiedzi krótko potwierdź, co z niej zapisałeś, zanim "
+    "zadasz kolejne pytanie.\n"
+    "- Nie zgaduj. Jeśli czegoś nie wiesz, a operatorka nie odpowiedziała, "
+    "zostaw w propozycji `[DO UZUPEŁNIENIA: co dokładnie]`.\n\n"
+    "ZAKOŃCZENIE ROZMOWY\n"
+    "Gdy przejdziesz wszystkie pytania albo operatorka powie, że chce "
+    "kończyć, zaproponuj gotowe treści obu plików. Format jest sztywny — "
+    "aplikacja rozpoznaje po nim propozycję i pokazuje przycisk zapisu:\n\n"
+    f"{ZNACZNIK_POCZATKU_PROPOZYCJI}glos-marki ===\n"
+    "(pełna treść pliku „Głos marki” w Markdown, gotowa do zapisania — "
+    "nie fragment, nie lista zmian)\n"
+    f"{ZNACZNIK_KONCA_PROPOZYCJI}\n\n"
+    f"{ZNACZNIK_POCZATKU_PROPOZYCJI}rodzaje-postow ===\n"
+    "(pełna treść pliku „Rodzaje postów” w Markdown)\n"
+    f"{ZNACZNIK_KONCA_PROPOZYCJI}\n\n"
+    "Każdy plik zaczynaj nagłówkiem YAML w postaci:\n"
+    "---\nname: brand-voice\ndescription: (jedno zdanie po polsku)\n---\n"
+    "(dla rodzajów postów: `name: schematy-postow`). Bez tego nagłówka "
+    "asystent nie odczyta pliku.\n\n"
+    "Propozycję pokazujesz raz, na końcu. Nie wypisuj jej po każdym pytaniu. "
+    "SAM NICZEGO NIE ZAPISUJESZ — nie masz do tego narzędzi i tak ma być: "
+    "operatorka zatwierdza treść w aplikacji."
+)
+
+
+async def uruchom_wywiad(
+    katalog_danych: Path,
+    material: str,
+    historia: list[dict[str, str]],
+    zakoncz: bool = False,
+) -> AsyncIterator[dict[str, Any]]:
+    """Tryb Wywiad (SPEC 8.3): rozmowa domykająca głos marki i rodzaje postów.
+
+    Bez narzędzi — komplet (pytania, obecna treść plików, korpus) dostaje
+    wstrzyknięty. Historia rozmowy wraca z przeglądarki przy każdej turze,
+    bo pojedyncze wywołanie SDK nie pamięta poprzednich.
+    """
+    opcje = zbuduj_opcje(
+        katalog_danych,
+        PROMPT_WYWIAD,
+        bez_narzedzi=True,
+        limit_usd=LIMIT_USD_WYWIAD,
+        maks_tur=3,
+    )
+
+    czesci = [material]
+    if historia:
+        rozmowa = "\n\n".join(
+            f"{'OPERATORKA' if wpis['rola'] == 'operator' else 'TY'}: {wpis['tresc'].strip()}"
+            for wpis in historia
+        )
+        czesci.append(f"### Dotychczasowa rozmowa\n{rozmowa}")
+        if zakoncz:
+            # Prośba o zakończenie w treści czatu nie wystarczała — model
+            # dopytywał mimo niej. Operatorka kliknęła przycisk „Zakończ",
+            # więc ta tura ma zwrócić propozycje i nic poza nimi.
+            czesci.append(
+                "### TO JEST OSTATNIA TURA ROZMOWY\n"
+                "Operatorka zakończyła wywiad. NIE zadawaj już żadnego pytania, "
+                "nawet doprecyzowującego, i nie proponuj kontynuacji. Zwróć "
+                "krótkie zdanie podsumowania, a po nim obie propozycje plików "
+                "w podanym formacie ze znacznikami. Wszystko, czego nie ustaliliście, "
+                "wpisz jako [DO UZUPEŁNIENIA: co dokładnie] — to poprawny wynik, "
+                "nie brak. Odpowiedź bez obu propozycji jest błędem."
+            )
+        else:
+            czesci.append(
+                "Kontynuuj rozmowę od tego miejsca: odnieś się do ostatniej "
+                "wypowiedzi operatorki i zadaj kolejne pytanie."
+            )
+    else:
+        czesci.append(
+            "### Zacznij rozmowę\n"
+            "Podsumuj, co widzisz w opublikowanych postach, i zadaj pierwsze pytanie."
+        )
+
+    yield {"typ": "status", "tekst": "Zbieram, co już wiadomo…"}
+    async for zdarzenie in _przetworz_zapytanie(opcje, "\n\n".join(czesci)):
         yield zdarzenie
 
 
