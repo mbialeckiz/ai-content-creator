@@ -581,6 +581,69 @@ label {
   line-height: 1.55;
 }
 
+/* ---------- Pasek trwających operacji (w nagłówku) ---------- */
+
+/* Nagłówek jest rozstrzelony przez `space-between`, więc pasek trzymamy
+   przy liczniku kosztu po prawej, a nie na środku. */
+.pasek-operacji {
+  display: flex;
+  gap: 0.4rem;
+  margin-left: auto;
+  margin-right: 0.75rem;
+  overflow: hidden;
+}
+
+.wpis-operacji {
+  border: 1px solid var(--linia-mocna);
+  border-radius: 999px;
+  padding: 0.25rem 0.7rem;
+  font-size: 0.78rem;
+  font-weight: 550;
+  background: var(--tlo-panelu);
+  color: var(--tekst-drugi);
+  max-width: 22rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wpis-operacji:hover {
+  border-color: var(--tekst-przygaszony);
+  color: var(--tekst);
+}
+
+/* Pulsowanie to jedyny sygnał, że coś trwa, gdy operatorka jest na innej
+   zakładce — dlatego jest wyraźne, ale nieagresywne. */
+.wpis-operacji.stan-trwa {
+  border-color: var(--akcent);
+  background: var(--akcent-tlo);
+  color: var(--akcent);
+  animation: pulsowanie-operacji 1.8s ease-in-out infinite;
+}
+
+.wpis-operacji.stan-gotowe {
+  border-color: var(--ok-linia);
+  background: var(--ok-tlo);
+  color: var(--ok);
+}
+
+.wpis-operacji.stan-blad {
+  border-color: var(--blad-linia);
+  background: var(--blad-tlo);
+  color: var(--blad);
+}
+
+@keyframes pulsowanie-operacji {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wpis-operacji.stan-trwa {
+    animation: none;
+  }
+}
+
 /* ---------- Wywiad o stylu (SPEC 8.3) ---------- */
 
 .karta-przeglad,

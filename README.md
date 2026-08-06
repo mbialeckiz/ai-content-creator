@@ -89,6 +89,24 @@ zamiast zgadywania. Zweryfikowano względem `claude-agent-sdk==0.2.128`
   wewnątrz generatora `StreamingResponse` FastAPI nie blokuje event loopa,
   osobny wątek/task nie jest potrzebny.
 
+## Czy operacje przeżywają zmianę okna
+
+Tak. Pisanie posta, budowanie planu, przegląd branży i czytanie dokumentu
+trwają od kilkunastu sekund do kilku minut — przez ten czas można swobodnie
+przełączać zakładki w aplikacji i przechodzić do innych programów. Żądanie
+biegnie dalej, a wynik zapisuje backend, nie przeglądarka.
+
+W nagłówku widać pasek trwających operacji: **„Pisanie posta…"**, potem
+**„Pisanie posta — gotowe"**. Pasek jest poza obszarem zakładek, więc widać
+go na każdym ekranie; kliknięcie wraca tam, gdzie leży wynik.
+
+Czego **nie** wolno robić w trakcie: zamykać karty przeglądarki ani odświeżać
+strony (F5) — to naprawdę przerywa żądanie. Aplikacja ostrzeże pytaniem
+„czy na pewno opuścić stronę".
+
+Drugie uruchomienie tej samej operacji, gdy pierwsza jeszcze trwa, jest
+blokowane z wyjaśnieniem — dwa naraz to podwójny koszt.
+
 ## Plan miesiąca — co asystent robi sam
 
 Poza tabelą pozycji plan zawiera cztery rzeczy, których operatorka nie musi

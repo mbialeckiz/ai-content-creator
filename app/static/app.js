@@ -25,6 +25,89 @@ function escapeHtml(tekst) {
 // o wydatku dopiero z rachunku.
 let kosztSesji = 0;
 
+// --- Rejestr trwających operacji ---
+//
+// Operacje agenta trwają od kilkunastu sekund do kilku minut. Samo żądanie
+// przeżywa i przełączenie zakładki, i przejście do innego okna — przeglądarka
+// go nie przerywa. Przepadał natomiast WIDOK: zakładka podmienia zawartość
+// <main>, więc wynik dopisywał się do elementu, którego już nie ma na stronie.
+// Nic się nie psuło i nic nie ginęło z dysku, ale operatorka nie miała jak
+// się dowiedzieć, że praca trwa albo że już się skończyła.
+//
+// Rejestr żyje poza <main>, w nagłówku, więc przeżywa przełączanie zakładek.
+
+const operacje = new Map();
+let licznikOperacji = 0;
+
+function rozpocznijOperacje(nazwa, zakladka) {
+  const id = ++licznikOperacji;
+  operacje.set(id, { nazwa, zakladka, stan: "trwa", status: "" });
+  odswiezPasekOperacji();
+  return id;
+}
+
+function aktualizujOperacje(id, status) {
+  const operacja = operacje.get(id);
+  if (!operacja) return;
+  operacja.status = status;
+  odswiezPasekOperacji();
+}
+
+function zakonczOperacje(id, { blad = "" } = {}) {
+  const operacja = operacje.get(id);
+  if (!operacja) return;
+  operacja.stan = blad ? "blad" : "gotowe";
+  operacja.status = blad;
+  // Skończone operacje znikają z paska same, żeby się nie zbierał. Zostają
+  // na tyle długo, żeby dało się wrócić po wynik z innej zakładki.
+  setTimeout(() => {
+    operacje.delete(id);
+    odswiezPasekOperacji();
+  }, 90_000);
+  odswiezPasekOperacji();
+}
+
+function czyTrwaOperacja(nazwa) {
+  for (const operacja of operacje.values()) {
+    if (operacja.stan === "trwa" && operacja.nazwa === nazwa) return true;
+  }
+  return false;
+}
+
+function odswiezPasekOperacji() {
+  const pasek = document.getElementById("pasek-operacji");
+  if (!pasek) return;
+  const wpisy = [...operacje.entries()];
+  pasek.hidden = wpisy.length === 0;
+  pasek.innerHTML = wpisy
+    .map(([id, operacja]) => {
+      const etykieta =
+        operacja.stan === "trwa"
+          ? `${escapeHtml(operacja.nazwa)}…${operacja.status ? ` ${escapeHtml(operacja.status)}` : ""}`
+          : operacja.stan === "blad"
+            ? `${escapeHtml(operacja.nazwa)} — nie udało się`
+            : `${escapeHtml(operacja.nazwa)} — gotowe`;
+      return `<button class="wpis-operacji stan-${operacja.stan}" data-operacja="${id}">${etykieta}</button>`;
+    })
+    .join("");
+
+  pasek.querySelectorAll("[data-operacja]").forEach((przycisk) => {
+    przycisk.addEventListener("click", () => {
+      const operacja = operacje.get(Number(przycisk.dataset.operacja));
+      if (operacja) przejdzDoZakladki(operacja.zakladka);
+    });
+  });
+}
+
+// Zamknięcie karty albo odświeżenie strony przerywa żądanie naprawdę —
+// w odróżnieniu od przełączenia zakładki. Ostrzegamy, bo za przerwaną
+// operację i tak się zapłaci.
+window.addEventListener("beforeunload", (zdarzenie) => {
+  if (![...operacje.values()].some((operacja) => operacja.stan === "trwa")) return;
+  zdarzenie.preventDefault();
+  zdarzenie.returnValue = "";
+});
+
 function dopiszKoszt(kosztUsd) {
   if (!kosztUsd) return;
   kosztSesji += kosztUsd;
@@ -1193,7 +1276,12 @@ async function uruchomRedaktora() {
     wynik.innerHTML = `<div class="karta"><p class="instrukcja-naprawy">Opisz, o czym ma być post, zanim klikniesz „Generuj".</p></div>`;
     return;
   }
+  if (czyTrwaOperacja("Pisanie posta")) {
+    wynik.innerHTML = `<div class="karta"><p class="instrukcja-naprawy">Poprzedni post jeszcze powstaje — poczekaj, aż się skończy. Dwa naraz to podwójny koszt.</p></div>`;
+    return;
+  }
 
+  const operacja = rozpocznijOperacje("Pisanie posta", "posty");
   przycisk.disabled = true;
   przycisk.textContent = "Generuję…";
 
@@ -1208,7 +1296,8 @@ async function uruchomRedaktora() {
     log.appendChild(wpis);
     log.scrollTop = log.scrollHeight;
   };
-  const zakoncz = () => {
+  const zakoncz = ({ blad = "" } = {}) => {
+    zakonczOperacje(operacja, { blad });
     przycisk.disabled = false;
     przycisk.textContent = "Generuj";
   };
@@ -1243,24 +1332,29 @@ async function uruchomRedaktora() {
   await strumieniujSSE(odpowiedz, (dane) => {
     if (dane.typ === "status" || dane.typ === "fragment") {
       dopiszWpis(dane.tekst);
+      if (dane.typ === "status") aktualizujOperacje(operacja, dane.tekst);
     } else if (dane.typ === "wynik") {
       dopiszKoszt(dane.koszt_usd);
       if (dane.bledny) {
         dopiszWpis("Generowanie zakończyło się błędem.", "blad");
-      } else if (dane.post) {
+        zakoncz({ blad: "błąd" });
+        return;
+      }
+      if (dane.post) {
         wynik.innerHTML = elementWynikuPosta(dane.post, dane.sciezka_pliku, dane.czesciowy);
         podepnijPrzyciskiKopiowania();
         wczytajHistoriePostow();
+        zakoncz();
       } else {
         dopiszWpis(
           dane.blad_zapisu || "Asystent nie zwrócił żadnego tekstu — spróbuj jeszcze raz.",
           "blad"
         );
+        zakoncz({ blad: "brak treści" });
       }
-      zakoncz();
     } else if (dane.typ === "blad") {
       dopiszWpis(dane.tekst, "blad");
-      zakoncz();
+      zakoncz({ blad: "przerwane" });
     }
   });
 }
@@ -1578,13 +1672,13 @@ async function renderujStyl() {
           — zapisujesz jednym kliknięciem albo odrzucasz.
         </p>
       </div>
-      <button class="przycisk-glowny" id="przycisk-wywiad">Porozmawiaj o stylu</button>
+      <button class="przycisk-glowny" id="przycisk-wywiad">${rozmowaWywiadu.length ? "Wróć do rozmowy" : "Porozmawiaj o stylu"}</button>
     </div>
     <div class="zakladki-plikow">${zakladki}</div>
     <div id="edytor-stylu"></div>
   `;
 
-  document.getElementById("przycisk-wywiad").addEventListener("click", renderujWywiad);
+  document.getElementById("przycisk-wywiad").addEventListener("click", () => renderujWywiad());
 
   OBSZAR.querySelectorAll(".zakladka-pliku").forEach((przycisk) => {
     przycisk.addEventListener("click", () => otworzPlikStylu(przycisk.dataset.plik, dane.pliki));
@@ -1601,8 +1695,11 @@ async function renderujStyl() {
 
 let rozmowaWywiadu = [];
 
-function renderujWywiad() {
-  rozmowaWywiadu = [];
+function renderujWywiad({ odNowa = false } = {}) {
+  // Rozmowa przeżywa wyjście do innej zakładki. Wcześniej każde wejście
+  // zaczynało od zera i kasowało odpowiedzi, za które już zapłacono.
+  if (odNowa) rozmowaWywiadu = [];
+  const wznawiamy = rozmowaWywiadu.length > 0;
   OBSZAR.innerHTML = `
     <h2>Rozmowa o stylu</h2>
     <p class="szczegoly">
@@ -1619,6 +1716,7 @@ function renderujWywiad() {
     <div class="pasek-narzedzi" style="margin-top:0.75rem">
       <button class="przycisk-drugorzedny" id="wywiad-zakoncz">Zakończ i pokaż propozycję</button>
       <button class="przycisk-drugorzedny" id="wywiad-wroc">Wróć do ustawień</button>
+      ${wznawiamy ? `<button class="przycisk-drugorzedny" id="wywiad-od-nowa">Zacznij rozmowę od nowa</button>` : ""}
     </div>
   `;
 
@@ -1644,6 +1742,22 @@ function renderujWywiad() {
     wyslijTureWywiadu({ zakoncz: true });
   });
   document.getElementById("wywiad-wroc").addEventListener("click", renderujStyl);
+  const odNowaPrzycisk = document.getElementById("wywiad-od-nowa");
+  if (odNowaPrzycisk) {
+    odNowaPrzycisk.addEventListener("click", () => {
+      if (confirm("Zacząć rozmowę od nowa? Dotychczasowe odpowiedzi przepadną.")) {
+        renderujWywiad({ odNowa: true });
+      }
+    });
+  }
+
+  if (wznawiamy) {
+    // Odtwarzamy rozmowę bez pytania modelu — historia jest w przeglądarce,
+    // więc powrót do wywiadu nic nie kosztuje.
+    rozmowaWywiadu.forEach((wpis) => dodajWpisWywiadu(wpis.rola, wpis.tresc));
+    pole.focus();
+    return;
+  }
 
   // Pierwszą turę wywołujemy sami — rozmowę zaczyna asystent, nie operatorka.
   wyslijTureWywiadu({ pierwsza: true });
@@ -2342,11 +2456,14 @@ async function renderujPlan() {
 async function zrobPrzegladBranzy() {
   const przycisk = document.getElementById("przycisk-przeglad");
   const obszar = document.getElementById("wynik-przegladu");
+  if (czyTrwaOperacja("Przegląd branży")) return;
+  const operacja = rozpocznijOperacje("Przegląd branży", "plan");
   przycisk.disabled = true;
   przycisk.textContent = "Przeglądam…";
   obszar.innerHTML = `<div class="log-przebiegu"><div class="wpis">Zaczynam…</div></div>`;
 
-  const zakoncz = () => {
+  const zakoncz = ({ blad = "" } = {}) => {
+    zakonczOperacje(operacja, { blad });
     przycisk.disabled = false;
     przycisk.textContent = "Zrób przegląd branży";
   };
@@ -2356,19 +2473,20 @@ async function zrobPrzegladBranzy() {
     odpowiedz = await fetch("/api/przeglad-branzy", { method: "POST" });
   } catch (blad) {
     obszar.innerHTML = `<div class="karta"><p class="instrukcja-naprawy">Nie udało się połączyć z serwerem (${escapeHtml(blad.message)}).</p></div>`;
-    zakoncz();
+    zakoncz({ blad: "brak połączenia" });
     return;
   }
 
   await strumieniujSSE(odpowiedz, (zdarzenie) => {
     if (zdarzenie.typ === "status") {
       obszar.innerHTML = `<div class="log-przebiegu"><div class="wpis">${escapeHtml(zdarzenie.tekst)}</div></div>`;
+      aktualizujOperacje(operacja, zdarzenie.tekst);
     } else if (zdarzenie.typ === "blad") {
       obszar.innerHTML = `<div class="karta"><p class="instrukcja-naprawy">${escapeHtml(zdarzenie.tekst)}</p></div>`;
-      zakoncz();
+      zakoncz({ blad: "przerwane" });
     } else if (zdarzenie.typ === "wynik") {
       dopiszKoszt(zdarzenie.koszt_usd);
-      zakoncz();
+      zakoncz({ blad: zdarzenie.blad_przegladu ? "nie zapisano" : "" });
       if (zdarzenie.blad_przegladu) {
         obszar.innerHTML = `<div class="karta"><p class="instrukcja-naprawy">${escapeHtml(zdarzenie.blad_przegladu)}</p></div>`;
         return;
@@ -2577,6 +2695,8 @@ async function zbudujPlan() {
   const przycisk = document.getElementById("przycisk-zbuduj-plan");
   const log = document.getElementById("log-planu");
   const uwagi = document.getElementById("uwagi-planu").value;
+  if (czyTrwaOperacja("Budowanie planu")) return;
+  const operacja = rozpocznijOperacje("Budowanie planu", "plan");
   przycisk.disabled = true;
   przycisk.textContent = "Buduję plan…";
   log.hidden = false;
@@ -2599,6 +2719,7 @@ async function zbudujPlan() {
     });
   } catch (blad) {
     dopiszWpis(`Nie udało się połączyć z serwerem (${blad.message}).`, "blad");
+    zakonczOperacje(operacja, { blad: "brak połączenia" });
     przycisk.disabled = false;
     return;
   }
@@ -2608,22 +2729,29 @@ async function zbudujPlan() {
     document.getElementById("tresc-planu").innerHTML = dane.zablokowane_nda
       ? elementBlokadyNda(dane.fraza)
       : `<div class="karta"><p class="instrukcja-naprawy">${escapeHtml(dane.blad || "Nie udało się zbudować planu.")}</p></div>`;
+    zakonczOperacje(operacja, { blad: "nie uruchomiono" });
     return;
   }
 
   await strumieniujSSE(odpowiedz, (zdarzenie) => {
     if (zdarzenie.typ === "status" || zdarzenie.typ === "fragment") {
       dopiszWpis(zdarzenie.tekst);
+      if (zdarzenie.typ === "status") aktualizujOperacje(operacja, zdarzenie.tekst);
     } else if (zdarzenie.typ === "wynik") {
       dopiszKoszt(zdarzenie.koszt_usd);
       if (zdarzenie.bledny) {
         dopiszWpis("Budowanie planu zakończyło się błędem.", "blad");
+        zakonczOperacje(operacja, { blad: "błąd" });
         przycisk.disabled = false;
       } else {
-        renderujPlan();
+        zakonczOperacje(operacja);
+        // Plan leży już na dysku, więc przerysowanie ekranu pokaże wynik także
+        // wtedy, gdy operatorka wróciła tu z innej zakładki.
+        if (window.location.hash.replace("#", "") === "plan") renderujPlan();
       }
     } else if (zdarzenie.typ === "blad") {
       dopiszWpis(zdarzenie.tekst, "blad");
+      zakonczOperacje(operacja, { blad: "przerwane" });
       przycisk.disabled = false;
     }
   });
@@ -2838,6 +2966,7 @@ async function przeczytajArtykul(przycisk) {
   const nazwa = przycisk.dataset.przeczytajArtykul;
   const obszar = document.querySelector(`[data-wyciag-dla="${CSS.escape(nazwa)}"]`);
   const oryginalnyTekst = przycisk.textContent;
+  const operacja = rozpocznijOperacje(`Czytanie: ${nazwa}`, "materialy");
   przycisk.disabled = true;
   przycisk.textContent = "Czytam…";
   obszar.hidden = false;
@@ -2848,6 +2977,7 @@ async function przeczytajArtykul(przycisk) {
     odpowiedz = await fetch(`/api/artykuly/${encodeURIComponent(nazwa)}/wyciag`, { method: "POST" });
   } catch (blad) {
     obszar.innerHTML = `<p class="instrukcja-naprawy">Nie udało się połączyć z serwerem (${escapeHtml(blad.message)}).</p>`;
+    zakonczOperacje(operacja, { blad: "brak połączenia" });
     przycisk.disabled = false;
     przycisk.textContent = oryginalnyTekst;
     return;
@@ -2856,6 +2986,7 @@ async function przeczytajArtykul(przycisk) {
   if ((odpowiedz.headers.get("content-type") || "").includes("application/json")) {
     const dane = await odpowiedz.json();
     obszar.innerHTML = `<p class="instrukcja-naprawy">${escapeHtml(dane.blad || "Nie udało się przeczytać dokumentu.")}</p>`;
+    zakonczOperacje(operacja, { blad: "nie uruchomiono" });
     przycisk.disabled = false;
     przycisk.textContent = oryginalnyTekst;
     return;
@@ -2864,10 +2995,13 @@ async function przeczytajArtykul(przycisk) {
   await strumieniujSSE(odpowiedz, (zdarzenie) => {
     if (zdarzenie.typ === "status") {
       obszar.innerHTML = `<div class="log-przebiegu"><div class="wpis">${escapeHtml(zdarzenie.tekst)}</div></div>`;
+      aktualizujOperacje(operacja, zdarzenie.tekst);
     } else if (zdarzenie.typ === "blad") {
       obszar.innerHTML = `<p class="instrukcja-naprawy">${escapeHtml(zdarzenie.tekst)}</p>`;
+      zakonczOperacje(operacja, { blad: "przerwane" });
     } else if (zdarzenie.typ === "wynik") {
       dopiszKoszt(zdarzenie.koszt_usd);
+      zakonczOperacje(operacja, { blad: zdarzenie.blad_wyciagu ? "nie zapisano" : "" });
       przycisk.disabled = false;
       przycisk.textContent = oryginalnyTekst;
       if (zdarzenie.blad_wyciagu) {
