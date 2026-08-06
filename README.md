@@ -6,25 +6,42 @@ grupa Maya Holding). Pełny kontekst biznesowy i wymagania: zobacz
 (warstwa interfejsu — zastępuje sekcję 9 dokumentu głównego). Konwencje
 projektu: `CLAUDE.md`.
 
-**Status: fazy 1–3 gotowe** z kolejności implementacji w SPEC sekcja 12.
+**Status: wszystkie fazy gotowe** z kolejności implementacji w SPEC sekcja 12.
 
 | Faza | Zakres | Stan |
 |---|---|---|
 | 1 | szkielet FastAPI, `start.command`, ekran „Sprawdź środowisko", opakowanie SDK | gotowe |
 | 2 | Asystent (czat) + Posty (tryb Redaktor) | gotowe |
 | 3 | Korpus + Styl | gotowe |
-| 4 | Plan + Materiały (tryb Strateg) | do zrobienia |
-| 5 | Wywiad o stylu w czacie | do zrobienia |
+| 4 | Plan + Materiały (tryb Strateg) | gotowe |
+| 5 | Wywiad o stylu w czacie | gotowe |
 
-Od fazy 3 narzędzie jest samowystarczalne dla operatorki: dopisywanie
-i import korpusu oraz zmiana zasad stylu nie wymagają administratora.
-Zakładki „Plan" i „Materiały" są jeszcze puste.
+Poza specyfikacją doszły: poprawianie posta poleceniem i ręcznie, przegląd
+branży na żądanie, wyciągi z wgranych dokumentów, grafika przez konektor
+Canva oraz pasek trwających operacji.
+
+Narzędzie jest samowystarczalne dla operatorki — administrator jest potrzebny
+tylko do aktualizacji kodu.
+
+**Czego brakuje do pełnej jakości:** korpusu opublikowanych postów oraz
+uzupełnionych zasad stylu i listy zakazanych zwrotów. Bez nich aplikacja
+działa, ale pisze ogólniej. Lista fraz objętych NDA jest nadal przykładowa
+— przed użyciem produkcyjnym trzeba ją wypełnić (SPEC 10.2).
+
+## Instrukcja dla operatorki
+
+Krok po kroku, dla osoby nietechnicznej: **[INSTRUKCJA.md](INSTRUKCJA.md)** —
+instalacja na Macu, klucz API, opis każdej zakładki, koszty i lista typowych
+problemów. To ten dokument wysyła się osobie, która ma zacząć korzystać
+z narzędzia.
 
 ## Uruchomienie
 
-**macOS:** dwuklik na `start.command`. Przy pierwszym uruchomieniu skrypt
-utworzy środowisko wirtualne, poprosi o uzupełnienie `.env` i otworzy go
-do edycji.
+**macOS:** dwuklik na `start.command` (za pierwszym razem prawym przyciskiem
+→ Otwórz, bo macOS blokuje pliki pobrane z internetu). Skrypt sprawdza wersję
+Pythona, buduje środowisko, instaluje zależności i otwiera przeglądarkę.
+Brak klucza API nie zatrzymuje uruchomienia — aplikacja przyjmie go na ekranie
+„Sprawdź środowisko", bez restartu.
 
 **Ręcznie (dowolny system):**
 

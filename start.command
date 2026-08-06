@@ -73,16 +73,18 @@ i uruchom start.command ponownie.
 Jeśli problem wraca, pokaż to okno administratorowi."
 fi
 
+# Brak klucza nie zatrzymuje uruchomienia: aplikacja przyjmie go na ekranie
+# „Sprawdź środowisko". Wcześniej skrypt kończył pracę i otwierał plik .env
+# w edytorze, co dla osoby nietechnicznej jest ślepą uliczką — plik zaczyna
+# się od kropki, więc Finder go nie pokazuje, a TextEdit potrafi zapisać
+# kopię w innym miejscu.
 if [ ! -f ".env" ]; then
     cp .env.example .env
-    open -e .env
-    zakoncz_z_komunikatem "Brakuje jeszcze klucza dostępu do asystenta.
-
-Otworzyłem plik ustawień w edytorze. Wklej klucz w linii
-zaczynającej się od ANTHROPIC_API_KEY= , zapisz plik (Cmd+S),
-zamknij edytor i uruchom start.command ponownie.
-
-Klucz dostaniesz od administratora."
+    echo ""
+    echo "Pierwsze uruchomienie: brakuje jeszcze klucza dostępu do asystenta."
+    echo "Wklej go w aplikacji — zakładka „Sprawdź środowisko” na dole menu."
+    echo "Klucz dostaniesz od administratora."
+    echo ""
 fi
 
 PORT="${PORT:-8420}"

@@ -181,7 +181,10 @@ def _sprawdz_klucz_api() -> WynikSprawdzenia:
         "Klucz API",
         "blad",
         "Brak zmiennej ANTHROPIC_API_KEY w środowisku.",
-        "Uzupełnij ANTHROPIC_API_KEY w pliku .env i uruchom aplikację ponownie.",
+        # Kiedyś odsyłaliśmy tu do ręcznej edycji .env. Formularz niżej na tym
+        # samym ekranie robi to samo bez restartu i bez szukania ukrytego pliku.
+        "Wklej klucz w polu „Klucz dostępu do asystenta” niżej na tym ekranie. "
+        "Klucz dostaniesz od administratora — zaczyna się od sk-ant-.",
     )
 
 
