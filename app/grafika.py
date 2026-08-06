@@ -43,8 +43,8 @@ BRAND_KIT_DOMYSLNY: dict[str, Any] = {
         "pasek_stopki": "#111111",
     },
     "kroje": {
-        "naglowek": "Helvetica Neue, Helvetica, Arial, sans-serif",
-        "podpis": "Helvetica Neue, Helvetica, Arial, sans-serif",
+        "naglowek": "Montserrat, Helvetica Neue, Helvetica, Arial, sans-serif",
+        "podpis": "Montserrat, Helvetica Neue, Helvetica, Arial, sans-serif",
     },
     "logo": {"plik": "", "plik_na_ciemnym": "", "wysokosc_px": 64},
     # Pion 4:5 — format, w którym operatorka robi projekty w Canvie i który

@@ -30,13 +30,13 @@ kolory:
 # w których grafit jest za jasny. Nie jest dziś używana przez generator
 # grafik; wpisz ją jako `tlo`, jeśli chcesz mocniejszego kontrastu.
 
-# [DO UZUPEŁNIENIA: nazwa kroju pisma z księgi znaku.] Nagłówki na stronie
-# są złożone geometrycznym groteskiem o dwupiętrowym „a". Nie znam nazwy
-# tego kroju, więc podstawiam najbliższy dostępny na każdym Macu. Wpisz
-# właściwą nazwę na początku listy — reszta zostanie jako zabezpieczenie.
+# Montserrat — krój używany w projektach z Canvy, potwierdzony przez klienta.
+# Plik kroju leży w aplikacji (app/static/kroje/), więc grafika wygląda tak
+# samo niezależnie od tego, co jest zainstalowane w systemie. Dalsza część
+# listy to zabezpieczenie na wypadek, gdyby plik się nie wczytał.
 kroje:
-  naglowek: "Avenir Next, Avenir, Helvetica Neue, Helvetica, sans-serif"
-  podpis: "Avenir Next, Avenir, Helvetica Neue, Helvetica, sans-serif"
+  naglowek: "Montserrat, Helvetica Neue, Helvetica, Arial, sans-serif"
+  podpis: "Montserrat, Helvetica Neue, Helvetica, Arial, sans-serif"
 
 # Logo: napis FORCES z członem DC w kolorze akcentu. Pliki wyciągnięte
 # z paczki PDF od klientki — wektorowe, bez tła, przycięte do samego znaku.

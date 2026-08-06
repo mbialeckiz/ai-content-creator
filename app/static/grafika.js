@@ -55,7 +55,24 @@ async function wczytajObraz(zrodlo) {
   });
 }
 
+// Canvas nie czeka na wczytanie kroju: gdyby zacząć rysować przed jego
+// pobraniem, tekst wyszedłby zastępczym Helveticą i podgląd różniłby się od
+// pobranego pliku. Ładujemy raz i zapamiętujemy obietnicę.
+let krojeGotowe = null;
+
+function poczekajNaKroje() {
+  if (!krojeGotowe) {
+    krojeGotowe = document.fonts
+      ? document.fonts.load('700 100px "Montserrat"')
+          .then(() => document.fonts.load('400 100px "Montserrat"'))
+          .catch(() => null)
+      : Promise.resolve(null);
+  }
+  return krojeGotowe;
+}
+
 async function narysujGrafike(canvas, dane) {
+  await poczekajNaKroje();
   const szerokosc = dane.format.szerokosc;
   const wysokosc = dane.format.wysokosc;
   canvas.width = szerokosc;

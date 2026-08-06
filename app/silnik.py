@@ -244,6 +244,21 @@ GRANICA_NDA = (
     "zamiast próbować to obejść albo zanonimizować częściowo."
 )
 
+# Forces DC publikuje na LinkedIn po angielsku — potwierdzone przez klienta
+# i widoczne we wszystkich projektach graficznych z Canvy. Interfejs aplikacji
+# i wszystko, co czyta operatorka, zostaje po polsku; angielski dotyczy
+# wyłącznie treści, która idzie na profil.
+JEZYK_PUBLIKACJI = (
+    "JĘZYK TREŚCI — reguła nadrzędna. Forces DC publikuje na LinkedIn PO "
+    "ANGIELSKU. Warianty posta, wersję na Facebooka i teksty przeznaczone na "
+    "grafikę pisz po angielsku, niezależnie od tego, w jakim języku dostajesz "
+    "brief, materiały z firmy i posty korpusu. Nie tłumacz dosłownie z "
+    "polskiego — pisz od razu po angielsku, jak firma działająca na rynku "
+    "nordyckim. Po polsku zostaje wyłącznie to, co czyta sama operatorka: "
+    "sekcja „Braki”, opisowa część briefu graficznego i Twoje wypowiedzi "
+    "w czacie."
+)
+
 ZAKAZ_TRESCI_PRAWNYCH = (
     "Nie formułuj twierdzeń prawnych (np. o zgodności z przepisami, "
     "certyfikacjach, gwarancjach). Jeśli temat tego wymaga, oznacz to "
@@ -271,6 +286,7 @@ SUBAGENT_RESEARCHER = AgentDefinition(
 PROMPT_REDAKTOR = (
     "Jesteś redaktorem treści LinkedIn dla Forces DC (fit-out data center, "
     "region nordycki). Piszesz na podstawie briefu od operatora. "
+    f"{JEZYK_PUBLIKACJI}\n\n"
     f"{GRANICA_NDA} {ZAKAZ_TRESCI_PRAWNYCH} "
     "Brakujące fakty (liczby, lokalizacje, nazwiska, daty) oznaczaj jako "
     "`[DO UZUPEŁNIENIA: co dokładnie]` — nigdy nie zgaduj i nie wymyślaj "
@@ -869,6 +885,8 @@ PROMPT_POPRAWKA = (
     "Norwegia). Dostajesz gotowy post i jedno polecenie od operatorki, co "
     "w nim zmienić. Twoim zadaniem jest przepisać ten post zgodnie z "
     "poleceniem.\n\n"
+    f"{JEZYK_PUBLIKACJI} Polecenie operatorki bywa po polsku — to normalne; "
+    "wykonaj je, ale post zostaw po angielsku.\n\n"
     f"{GRANICA_NDA} {ZAKAZ_TRESCI_PRAWNYCH}\n\n"
     "Zasady:\n"
     "- Zmieniaj tylko to, o co prosi polecenie. Reszta tekstu ma zostać "
@@ -972,6 +990,8 @@ PROMPT_HASLO_GRAFIKI = (
     "Jesteś dyrektorem artystycznym pracującym dla Forces DC (fit-out data "
     "center, Norwegia). Dostajesz treść posta na LinkedIn. Twoim zadaniem "
     "jest wybrać tekst na grafikę, która będzie towarzyszyć temu postowi.\n\n"
+    "HASŁO, PODTYTUŁ i TEKST ALTERNATYWNY pisz PO ANGIELSKU — tak jak cała "
+    "komunikacja Forces DC na LinkedIn.\n\n"
     f"{GRANICA_NDA} {ZAKAZ_TRESCI_PRAWNYCH}\n\n"
     "Zasady:\n"
     "- HASŁO: najwyżej 60 znaków. Ma działać samo, bez czytania posta, i "

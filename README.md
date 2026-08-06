@@ -107,6 +107,31 @@ strony (F5) — to naprawdę przerywa żądanie. Aplikacja ostrzeże pytaniem
 Drugie uruchomienie tej samej operacji, gdy pierwsza jeszcze trwa, jest
 blokowane z wyjaśnieniem — dwa naraz to podwójny koszt.
 
+## Język treści
+
+Forces DC publikuje na LinkedIn **po angielsku** — potwierdzone przez klienta
+i widoczne we wszystkich projektach graficznych. Po angielsku powstają:
+warianty posta, wersja na Facebooka, hasło i podtytuł na grafice oraz tekst
+alternatywny.
+
+Po polsku zostaje wszystko, co czyta operatorka: interfejs, sekcja „Braki",
+opisowa część briefu graficznego, plan miesiąca, wyciągi z dokumentów
+i rozmowy z asystentem. Brief można pisać po polsku — post i tak wyjdzie
+po angielsku.
+
+Reguła stoi w jednym miejscu (`silnik.JEZYK_PUBLIKACJI`) i jest wstrzykiwana
+do trybów, które produkują treść.
+
+## Krój pisma
+
+**Montserrat**, ten sam, którego operatorka używa w Canvie. Plik kroju leży
+w `app/static/kroje/` i jest podpięty przez `@font-face` — nie pobieramy go
+z sieci. Dzięki temu grafika wygląda tak samo na każdym komputerze, działa
+bez internetu i nie wymaga instalowania czcionki w systemie.
+
+Licencja SIL OFL 1.1 pozwala na osadzanie i redystrybucję, także komercyjną
+(`app/static/kroje/LICENCJA.md`).
+
 ## Plan miesiąca — co asystent robi sam
 
 Poza tabelą pozycji plan zawiera cztery rzeczy, których operatorka nie musi

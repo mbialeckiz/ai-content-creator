@@ -458,6 +458,35 @@ def test_wywiad_nie_ma_prawa_zapisu() -> None:
             "NICZEGO NIE ZAPISUJESZ" in silnik.PROMPT_WYWIAD)
 
 
+def test_tresc_powstaje_po_angielsku() -> None:
+    """Forces DC publikuje po angielsku (potwierdzone przez klienta), a to,
+    co czyta operatorka, zostaje po polsku."""
+    for nazwa in ("PROMPT_REDAKTOR", "PROMPT_POPRAWKA", "PROMPT_HASLO_GRAFIKI"):
+        prompt = getattr(silnik, nazwa)
+        sprawdz(f"{nazwa} każe pisać po angielsku", "ANGIELSKU" in prompt)
+
+    sprawdz("reguła mówi też, co zostaje po polsku",
+            "Braki" in silnik.JEZYK_PUBLIKACJI and "polsku" in silnik.JEZYK_PUBLIKACJI)
+    # Tryby rozmawiające z operatorką nie mogą przejść na angielski.
+    for nazwa in ("PROMPT_ASYSTENT", "PROMPT_WYWIAD"):
+        sprawdz(f"{nazwa} nadal rozmawia po polsku",
+                "po polsku" in getattr(silnik, nazwa))
+
+
+def test_krojem_jest_montserrat() -> None:
+    from app import grafika
+
+    kit, _ = grafika.wczytaj_brand_kit(katalog_testowy())
+    sprawdz("wartość awaryjna kroju to Montserrat",
+            kit["kroje"]["naglowek"].startswith("Montserrat"), kit["kroje"]["naglowek"])
+
+    plik = Path(__file__).parent / "app" / "static" / "kroje" / "montserrat.woff2"
+    sprawdz("plik kroju leży w aplikacji, nie jest pobierany z sieci", plik.is_file())
+    index = (Path(__file__).parent / "app" / "static" / "index.html").read_text(encoding="utf-8")
+    sprawdz("krój jest podpięty przez @font-face", "montserrat.woff2" in index)
+    sprawdz("aplikacja nie ściąga kroju z Google Fonts", "fonts.googleapis.com" not in index)
+
+
 def test_grafika_odwzorowuje_wzory_z_canvy() -> None:
     from app import grafika
 
