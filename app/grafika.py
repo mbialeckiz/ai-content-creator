@@ -29,12 +29,16 @@ WZORZEC_KOLORU = re.compile(r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$")
 BRAND_KIT_DOMYSLNY: dict[str, Any] = {
     "nazwa_firmy": "Forces DC",
     "podpis": "",
+    # Kolory z paczki brand kitu Forces DC. To wartości awaryjne — używane,
+    # gdy brakuje `brand-kit.yaml` albo pojedynczego pola. Wpisujemy tu barwy
+    # marki, a nie neutralne zastępniki: aplikacja ma jednego klienta, więc
+    # grafika z brakującym plikiem ma nadal wyglądać jak jego, a nie jak nic.
     "kolory": {
-        "tlo": "#0E2233",
+        "tlo": "#32373C",
         "tekst": "#FFFFFF",
-        "akcent": "#F0A500",
-        "tlo_alternatywne": "#F4F5F7",
-        "tekst_alternatywny": "#0E2233",
+        "akcent": "#BBA470",
+        "tlo_alternatywne": "#FFFFFF",
+        "tekst_alternatywny": "#000000",
     },
     "kroje": {
         "naglowek": "Helvetica Neue, Helvetica, Arial, sans-serif",

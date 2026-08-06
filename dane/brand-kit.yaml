@@ -1,37 +1,44 @@
 # Identyfikacja wizualna Forces DC — używana przy tworzeniu grafik do postów.
 #
 # Ten plik edytujesz w aplikacji (zakładka Styl → Identyfikacja wizualna).
-# Kolory podawaj jako kody szesnastkowe, np. #1E2127.
+# Kolory podawaj jako kody szesnastkowe, np. #32373C.
 #
-# Wartości odczytane ze strony forces.no (lipiec 2026) na podstawie zrzutów
-# ekranu. Odczyt z obrazu jest bliski, ale nie co do bitu — jeśli macie
-# oficjalną księgę znaku z dokładnymi kodami, podmieńcie je tutaj.
+# Kolory pochodzą z paczki brand kitu dostarczonej przez klientkę (sierpień
+# 2026) — cztery kody: #BBA470, #32373C, #000000, #FFFFFF. Same kody były
+# podane bez opisu ról, więc przypisanie poniżej wynika z wyglądu strony
+# forces.no. Jeśli księga znaku mówi inaczej, popraw tutaj.
 
 nazwa_firmy: Forces DC
 podpis: Special Forces For Nordic Data Center Industry
 
 kolory:
-  # Ciemna grafitowa podstawa, na której zbudowana jest cała strona.
-  tlo: "#1E2127"
+  # Grafitowa podstawa — dominujący kolor strony i grafik.
+  tlo: "#32373C"
   tekst: "#FFFFFF"
-  # Stonowane złoto — jedyny kolor akcentu na stronie. Występuje w logo
-  # (człon „DC"), przyciskach „Let's Talk" i „More About Us" oraz ikonach.
-  akcent: "#C2A470"
-  # Jasna sekcja ze strony („Custom-fit manpower solutions").
-  tlo_alternatywne: "#EAEAEA"
-  tekst_alternatywny: "#1E2127"
+  # Stonowane złoto — jedyny kolor akcentu. Występuje w logo (człon „DC"),
+  # przyciskach i ikonach.
+  akcent: "#BBA470"
+  # Wariant jasny. Paleta marki nie zawiera szarości, więc jasna wersja
+  # grafiki to biel z czarnym tekstem, a nie odcień szarego.
+  tlo_alternatywne: "#FFFFFF"
+  tekst_alternatywny: "#000000"
 
-# Nagłówki na stronie są złożone geometrycznym groteskiem o dwupiętrowym „a".
-# Nie znam nazwy tego kroju z samego obrazu, więc podstawiam najbliższy krój
-# dostępny na każdym Macu. Jeśli księga znaku podaje właściwą nazwę, wpisz ją
-# na początku listy — reszta zostanie jako zabezpieczenie.
+# W palecie jest też czerń #000000 — głębsza niż grafit, do zastosowań,
+# w których grafit jest za jasny. Nie jest dziś używana przez generator
+# grafik; wpisz ją jako `tlo`, jeśli chcesz mocniejszego kontrastu.
+
+# [DO UZUPEŁNIENIA: nazwa kroju pisma z księgi znaku.] Nagłówki na stronie
+# są złożone geometrycznym groteskiem o dwupiętrowym „a". Nie znam nazwy
+# tego kroju, więc podstawiam najbliższy dostępny na każdym Macu. Wpisz
+# właściwą nazwę na początku listy — reszta zostanie jako zabezpieczenie.
 kroje:
   naglowek: "Avenir Next, Avenir, Helvetica Neue, Helvetica, sans-serif"
   podpis: "Avenir Next, Avenir, Helvetica Neue, Helvetica, sans-serif"
 
 # Logo: biały napis FORCES z członem DC w kolorze akcentu, litery rozstrzelone
 # i lekko techniczne. Wgraj plik przez zakładkę Styl → Identyfikacja wizualna,
-# a potem wpisz tu jego nazwę. Strona używa wersji na ciemnym tle.
+# a potem wpisz tu jego nazwę. [DO UZUPEŁNIENIA: pliki logo — klientka
+# dostarcza wersje SVG.]
 logo:
   plik: ""
   plik_na_ciemnym: ""
