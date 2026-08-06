@@ -22,6 +22,9 @@ kolory:
   # grafiki to biel z czarnym tekstem, a nie odcień szarego.
   tlo_alternatywne: "#FFFFFF"
   tekst_alternatywny: "#000000"
+  # Czarny pasek u dołu jasnych grafik, z wyśrodkowanym znakiem — element
+  # powtarzający się we wszystkich projektach z Canvy.
+  pasek_stopki: "#111111"
 
 # W palecie jest też czerń #000000 — głębsza niż grafit, do zastosowań,
 # w których grafit jest za jasny. Nie jest dziś używana przez generator
@@ -46,6 +49,13 @@ logo:
   # ok. 540 px szerokości na grafice 1200 px — mniej więcej wypełnia kolumnę.
   wysokosc_px: 64
 
+# Adres wypisywany u góry grafiki. Jest na większości ich projektów i pełni
+# rolę podpisu, gdy obraz krąży wyrwany z kontekstu posta. Zostaw puste,
+# żeby go nie rysować.
+adres_www: "www.forces.no"
+
+# Pion 4:5 — format, w którym powstają projekty w Canvie i który LinkedIn
+# pokazuje największy. Kwadrat 1200×1200 zajmował w kanale wyraźnie mniej.
 format:
-  szerokosc: 1200
-  wysokosc: 1200
+  szerokosc: 1080
+  wysokosc: 1350

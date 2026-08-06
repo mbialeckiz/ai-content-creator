@@ -39,13 +39,19 @@ BRAND_KIT_DOMYSLNY: dict[str, Any] = {
         "akcent": "#BBA470",
         "tlo_alternatywne": "#FFFFFF",
         "tekst_alternatywny": "#000000",
+        # Czarny pasek ze znakiem u dołu jasnych projektów.
+        "pasek_stopki": "#111111",
     },
     "kroje": {
         "naglowek": "Helvetica Neue, Helvetica, Arial, sans-serif",
         "podpis": "Helvetica Neue, Helvetica, Arial, sans-serif",
     },
     "logo": {"plik": "", "plik_na_ciemnym": "", "wysokosc_px": 64},
-    "format": {"szerokosc": 1200, "wysokosc": 1200},
+    # Pion 4:5 — format, w którym operatorka robi projekty w Canvie i który
+    # LinkedIn pokazuje największy. Kwadrat, od którego zaczynaliśmy, zajmuje
+    # w kanale wyraźnie mniej miejsca.
+    "format": {"szerokosc": 1080, "wysokosc": 1350},
+    "adres_www": "www.forces.no",
 }
 
 
@@ -144,8 +150,12 @@ def zbuduj_dane_grafiki(
     kit, ostrzezenia = wczytaj_brand_kit(katalog_danych)
     ciemny = wariant_kolorystyczny != "jasny"
 
-    nazwa_logo = kit["logo"].get("plik_na_ciemnym") if ciemny else ""
-    logo = _logo_jako_data_uri(katalog_danych, nazwa_logo or kit["logo"].get("plik", ""))
+    # Znak zawsze leży na ciemnym: albo na ciemnym tle grafiki, albo na czarnym
+    # pasku stopki w wariancie jasnym. Wersja na jasne tło (czarny napis) jest
+    # tu więc zawsze zła — zostaje wyłącznie jako zabezpieczenie, gdyby wersji
+    # na ciemne tło nie wgrano.
+    nazwa_logo = kit["logo"].get("plik_na_ciemnym") or kit["logo"].get("plik", "")
+    logo = _logo_jako_data_uri(katalog_danych, nazwa_logo)
 
     return {
         "haslo": haslo,
@@ -156,7 +166,9 @@ def zbuduj_dane_grafiki(
             "tlo": kit["kolory"]["tlo"] if ciemny else kit["kolory"]["tlo_alternatywne"],
             "tekst": kit["kolory"]["tekst"] if ciemny else kit["kolory"]["tekst_alternatywny"],
             "akcent": kit["kolory"]["akcent"],
+            "pasek_stopki": kit["kolory"].get("pasek_stopki", "#111111"),
         },
+        "adres_www": kit.get("adres_www", ""),
         "kroje": kit["kroje"],
         "logo": logo,
         "wysokosc_logo": int(kit["logo"].get("wysokosc_px") or 64),

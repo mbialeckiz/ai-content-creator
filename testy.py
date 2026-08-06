@@ -458,6 +458,35 @@ def test_wywiad_nie_ma_prawa_zapisu() -> None:
             "NICZEGO NIE ZAPISUJESZ" in silnik.PROMPT_WYWIAD)
 
 
+def test_grafika_odwzorowuje_wzory_z_canvy() -> None:
+    from app import grafika
+
+    katalog = katalog_testowy()
+    dane = grafika.zbuduj_dane_grafiki(katalog, haslo="Test", wariant_kolorystyczny="jasny")
+
+    proporcja = dane["format"]["wysokosc"] / dane["format"]["szerokosc"]
+    sprawdz("grafika jest pionowa 4:5, nie kwadratowa",
+            abs(proporcja - 1.25) < 0.01, f"proporcja {proporcja:.3f}")
+    sprawdz("adres strony trafia na grafikę", dane["adres_www"] == "www.forces.no")
+    sprawdz("pasek stopki ma swój kolor", dane["kolory"]["pasek_stopki"] == "#111111")
+
+    # Logo leży zawsze na ciemnym: na ciemnym tle albo na czarnym pasku.
+    (katalog / "logo").mkdir(parents=True, exist_ok=True)
+    (katalog / "logo" / "na-ciemnym.svg").write_text("<svg/>", encoding="utf-8")
+    (katalog / "logo" / "na-jasnym.svg").write_text("<svg-jasne/>", encoding="utf-8")
+    (katalog / "brand-kit.yaml").write_text(
+        'logo:\n  plik: "na-jasnym.svg"\n  plik_na_ciemnym: "na-ciemnym.svg"\n',
+        encoding="utf-8",
+    )
+    import base64
+
+    for wariant in ("ciemny", "jasny"):
+        dane = grafika.zbuduj_dane_grafiki(katalog, haslo="Test", wariant_kolorystyczny=wariant)
+        odkodowane = base64.b64decode(dane["logo"].split(",", 1)[1]).decode()
+        sprawdz(f"wariant {wariant} bierze logo na ciemne tło",
+                odkodowane == "<svg/>", odkodowane)
+
+
 def test_wyciagi_z_dokumentow() -> None:
     katalog = katalog_testowy()
     (katalog / "artykuly").mkdir(parents=True, exist_ok=True)
