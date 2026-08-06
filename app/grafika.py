@@ -23,6 +23,13 @@ logger = logging.getLogger("forces_content_studio.grafika")
 NAZWA_BRAND_KITU = "brand-kit.yaml"
 PODKATALOG_LOGO = "logo"
 ROZSZERZENIA_LOGO = (".png", ".svg", ".jpg", ".jpeg", ".webp")
+TYPY_LOGO = {
+    ".png": "image/png",
+    ".svg": "image/svg+xml",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".webp": "image/webp",
+}
 
 WZORZEC_KOLORU = re.compile(r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$")
 
@@ -118,7 +125,11 @@ def _logo_jako_data_uri(katalog_danych: Path, nazwa_pliku: str) -> str:
     plik = katalog_danych / PODKATALOG_LOGO / Path(nazwa_pliku).name
     if not plik.is_file():
         return ""
-    typ = mimetypes.guess_type(plik.name)[0] or "image/png"
+    # Typ ustalamy z własnej tabelki, a nie z `mimetypes`: na Windowsie
+    # rozpoznawanie typów opiera się o rejestr systemowy i potrafi zwrócić
+    # dla `.svg` coś innego niż `image/svg+xml` albo nic. Zły typ oznacza
+    # logo, którego przeglądarka nie narysuje.
+    typ = TYPY_LOGO.get(plik.suffix.lower()) or mimetypes.guess_type(plik.name)[0] or "image/png"
     return f"data:{typ};base64,{base64.b64encode(plik.read_bytes()).decode()}"
 
 

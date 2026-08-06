@@ -1,7 +1,16 @@
 # Forces DC Content Studio — instrukcja
 
 Dla osoby, która będzie korzystać z narzędzia na co dzień. Nie trzeba nic
-umieć programować. Instrukcja jest dla komputera **Mac**.
+umieć programować.
+
+Instrukcja obejmuje **Windows** i **Maca**. Kroki są takie same, różnią się
+tylko nazwy plików i sposób ich uruchamiania — przy każdym kroku, w którym
+to ma znaczenie, znajdziesz obie wersje.
+
+| | Windows | Mac |
+|---|---|---|
+| Plik do uruchamiania | `start.bat` | `start.command` |
+| Terminal / wiersz poleceń | **Wiersz polecenia** (`Win + R`, wpisz `cmd`) | **Terminal** (`Cmd + Spacja`, wpisz `terminal`) |
 
 Jeśli coś nie zadziała, przejdź na koniec — jest tam lista typowych problemów.
 
@@ -12,26 +21,43 @@ Jeśli coś nie zadziała, przejdź na koniec — jest tam lista typowych proble
 ## Krok 1. Sprawdź, czy masz Pythona
 
 Aplikacja potrzebuje programu o nazwie Python, w wersji 3.10 lub nowszej.
-Zwykle jest już na Macu, ale często w za starej wersji.
+Na Macu zwykle jest, ale często w za starej wersji. Na Windowsie najczęściej
+trzeba go doinstalować.
 
-1. Otwórz **Terminal**: naciśnij `Cmd + Spacja`, wpisz `terminal`, `Enter`.
-2. Wklej poniższą linię i naciśnij `Enter`:
+**Windows:**
+
+1. Naciśnij `Win + R`, wpisz `cmd`, `Enter`.
+2. Wklej i naciśnij `Enter`:
+
+   ```
+   py --version
+   ```
+
+**Mac:**
+
+1. Naciśnij `Cmd + Spacja`, wpisz `terminal`, `Enter`.
+2. Wklej i naciśnij `Enter`:
 
    ```
    python3 --version
    ```
 
-3. Zobaczysz coś w rodzaju `Python 3.9.6` albo `Python 3.12.4`.
+**Odczytanie wyniku (tak samo na obu):** zobaczysz coś w rodzaju
+`Python 3.9.6` albo `Python 3.12.4`.
 
-**Jeśli druga liczba to 10 lub więcej** (3.10, 3.11, 3.12…) — masz wszystko,
-przejdź do kroku 2.
-
-**Jeśli druga liczba jest mniejsza niż 10** (np. 3.9) albo dostajesz błąd:
+- **Druga liczba to 10 lub więcej** (3.10, 3.11, 3.12…) — masz wszystko,
+  przejdź do kroku 2.
+- **Druga liczba mniejsza niż 10** albo dostajesz błąd — zainstaluj Pythona:
 
 1. Wejdź na <https://www.python.org/downloads/>
 2. Kliknij duży żółty przycisk na górze strony
-3. Otwórz pobrany plik i przeklikaj instalator (same „Dalej")
-4. Zamknij Terminal i otwórz go od nowa
+3. Otwórz pobrany plik i przeklikaj instalator
+
+   > **Windows — to jest ważne:** w pierwszym oknie instalatora, na samym
+   > dole, zaznacz **„Add python.exe to PATH"**, zanim klikniesz *Install Now*.
+   > Bez tego aplikacja nie znajdzie Pythona.
+
+4. Zamknij wiersz poleceń / Terminal i otwórz go od nowa
 
 Instalacja niczego nie zepsuje — nowy Python stanie obok starego.
 
@@ -50,12 +76,17 @@ Marcin przysyła Ci link do repozytorium na GitHubie albo gotowy plik ZIP.
 
 Dalej tak samo:
 
-4. Otwórz pobrany plik ZIP dwuklikiem — powstanie folder
-5. **Przenieś ten folder do katalogu Dokumenty** i nazwij go krótko,
+4. Rozpakuj pobrany plik ZIP:
+   - **Windows:** prawy przycisk na pliku → **Wyodrębnij wszystkie** → *Wyodrębnij*
+   - **Mac:** dwuklik na pliku
+5. **Przenieś powstały folder do katalogu Dokumenty** i nazwij go krótko,
    np. `Forces-DC-Studio`
 
 > **Ważne:** nie zostawiaj folderu w Pobranych. Aplikacja zapisuje w nim
 > Twoje posty i plany — w Pobranych łatwo go przypadkiem usunąć.
+>
+> **Windows:** nie zostawiaj go też w folderze zsynchronizowanym z OneDrive,
+> jeśli masz włączone „pliki na żądanie" — potrafi to zablokować zapis.
 
 ## Krok 3. Poproś Marcina o klucz dostępu
 
@@ -67,22 +98,37 @@ nie zadziała. Wpiszesz go za chwilę, w kroku 5.
 
 ## Krok 4. Uruchom aplikację
 
+**Windows:**
+
+1. Otwórz folder `Forces-DC-Studio`
+2. Kliknij dwukrotnie plik **`start.bat`**
+3. Jeśli pojawi się niebieskie okno *„System Windows ochronił Twój komputer"*
+   — kliknij **Więcej informacji**, a potem **Uruchom mimo to**
+
+**Mac:**
+
 1. Otwórz folder `Forces-DC-Studio`
 2. Znajdź plik **`start.command`**
-3. **Kliknij go prawym przyciskiem** → wybierz **Otwórz** → w okienku,
-   które wyskoczy, kliknij jeszcze raz **Otwórz**
+3. **Kliknij go prawym przyciskiem** → **Otwórz** → w okienku, które wyskoczy,
+   kliknij jeszcze raz **Otwórz**
 
-> Za pierwszym razem koniecznie **prawym przyciskiem**. Zwykły dwuklik
-> macOS zablokuje komunikatem, że plik pochodzi z internetu. Przy kolejnych
-> uruchomieniach dwuklik już wystarczy.
+> Za pierwszym razem koniecznie prawym przyciskiem — zwykły dwuklik macOS
+> zablokuje. Przy kolejnych uruchomieniach dwuklik wystarczy.
 
-Otworzy się czarne okno Terminala i zacznie wypisywać tekst. **To normalne.**
-Pierwsze uruchomienie trwa 2–3 minuty, bo aplikacja dociąga swoje składniki.
+**Dalej tak samo na obu systemach:**
+
+Otworzy się czarne okno i zacznie wypisywać tekst. **To normalne.**
+Pierwsze uruchomienie trwa 2–3 minuty, bo aplikacja dociąga swoje składniki
+(ok. 300 MB, więc potrzebny jest internet).
 
 Po chwili sama otworzy przeglądarkę pod adresem `http://localhost:8420`.
 
 > **Czarne okno musi zostać otwarte, dopóki pracujesz.** Zamknięcie go
 > wyłącza aplikację. Możesz je zminimalizować.
+>
+> Windows może przy pierwszym uruchomieniu zapytać o dostęp do sieci dla
+> Pythona — wystarczy **sieć prywatna**. Aplikacja i tak działa tylko na
+> Twoim komputerze.
 
 ## Krok 5. Wpisz klucz
 
@@ -107,10 +153,17 @@ oznaczają problem** — przy każdym jest napisane, co zrobić.
 
 # Część 2. Codzienne uruchamianie
 
-Otwórz folder `Forces-DC-Studio` i **kliknij dwukrotnie `start.command`**.
+Otwórz folder `Forces-DC-Studio` i kliknij dwukrotnie:
+
+- **Windows:** `start.bat`
+- **Mac:** `start.command`
+
 To wszystko. Przeglądarka otworzy się sama.
 
-Żeby skończyć pracę: zamknij czarne okno Terminala.
+Żeby skończyć pracę: zamknij czarne okno.
+
+> Wygodniej? Kliknij ten plik prawym przyciskiem i wybierz
+> **Przypnij do paska zadań** (Windows) albo przeciągnij go do Docka (Mac).
 
 ---
 
@@ -284,8 +337,8 @@ programów. W nagłówku widać pasek, np. „Pisanie posta…", a po zakończen
 „gotowe". Kliknięcie w niego wraca tam, gdzie leży wynik.
 
 **Czego nie robić w trakcie:** nie zamykaj karty przeglądarki i nie odświeżaj
-strony (`Cmd + R`). To naprawdę przerywa pracę, za którą i tak zapłacisz.
-Aplikacja ostrzeże pytaniem.
+strony (`F5` na Windowsie, `Cmd + R` na Macu). To naprawdę przerywa pracę,
+za którą i tak zapłacisz. Aplikacja ostrzeże pytaniem.
 
 ## Gdzie są moje pliki
 
@@ -298,6 +351,7 @@ Wszystko leży w folderze `Forces-DC-Studio/dane`:
 | `input-firmowy/` | materiały z firmy |
 | `korpus/linkedin/` | opublikowane posty |
 | `artykuly/` | wgrane dokumenty |
+| `logo/` | pliki logo do grafik |
 
 To zwykłe pliki tekstowe — możesz je otworzyć i poprawić poza aplikacją.
 **Warto ten folder regularnie kopiować** albo trzymać na Dysku Google.
@@ -306,8 +360,20 @@ To zwykłe pliki tekstowe — możesz je otworzyć i poprawić poza aplikacją.
 
 # Część 5. Gdy coś nie działa
 
-**Dwuklik na `start.command` nic nie robi albo pokazuje ostrzeżenie**
+**Mac: dwuklik na `start.command` nic nie robi albo pokazuje ostrzeżenie**
 → Za pierwszym razem kliknij **prawym przyciskiem** → **Otwórz** → **Otwórz**.
+
+**Windows: „System Windows ochronił Twój komputer"**
+→ **Więcej informacji** → **Uruchom mimo to**. To standardowe ostrzeżenie
+dla plików pobranych z internetu.
+
+**Windows: okno mignęło i zniknęło**
+→ Otwórz wiersz poleceń (`Win + R` → `cmd`), przeciągnij do niego plik
+`start.bat` i naciśnij `Enter`. Okno zostanie otwarte i zobaczysz komunikat.
+
+**Windows: otwiera się Microsoft Store zamiast aplikacji**
+→ To zaślepka Pythona ze Sklepu. Zainstaluj Pythona z python.org
+(krok 1 instalacji) i zaznacz **„Add python.exe to PATH"**.
 
 **„Aplikacja wymaga Pythona w wersji 3.10 lub nowszej"**
 → Wróć do kroku 1 instalacji.
@@ -322,7 +388,7 @@ To zwykłe pliki tekstowe — możesz je otworzyć i poprawić poza aplikacją.
 → Klucz jest zły albo wygasł. Sprawdź środowisko → wklej klucz od nowa.
 
 **Zmiany nie działają po aktualizacji od Marcina**
-→ Zamknij czarne okno **do końca** i uruchom `start.command` ponownie.
+→ Zamknij czarne okno **do końca** i uruchom aplikację ponownie.
 Stary proces potrafi zostać w tle i podawać poprzednią wersję.
 
 **Posty „zniknęły"**
@@ -331,5 +397,12 @@ folderu aplikacja czyta. Jeśli to nie ten, w którym pracowałaś, powiedz
 administratorowi.
 
 **Coś innego**
-→ Zrób zrzut ekranu czarnego okna Terminala i wyślij Marcinowi. Tam widać,
-co się stało.
+→ Zrób zrzut ekranu czarnego okna i wyślij Marcinowi. Tam widać, co się stało.
+
+---
+
+> **Uwaga administratora:** wersja dla Windows (`start.bat`) została napisana
+> i sprawdzona pod kątem logiki, ale nie była uruchomiona na prawdziwym
+> Windowsie — w środowisku, w którym powstawała, nie było takiej maszyny.
+> Sam kod aplikacji jest przenośny i nie zawiera niczego uniksowego.
+> Pierwsze uruchomienie u operatorki warto zrobić razem, przez telefon.

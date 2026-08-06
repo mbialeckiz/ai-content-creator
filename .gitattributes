@@ -1,0 +1,4 @@
+# Skrypt uruchomieniowy dla Windows musi mieć końce linii CRLF — przy samym
+# LF cmd.exe potrafi się gubić na blokach w nawiasach.
+*.bat text eol=crlf
+*.command text eol=lf

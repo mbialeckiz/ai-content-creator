@@ -849,7 +849,9 @@ def zapisz_klucz_api(katalog_aplikacji: Path, klucz: str) -> None:
         nowe_linie.append(f"{NAZWA_KLUCZA_API}={klucz}")
 
     plik.write_text("\n".join(nowe_linie) + "\n", encoding="utf-8")
-    # Plik z kluczem czytelny tylko dla właściciela konta.
+    # Ograniczenie dostępu do właściciela konta. Na Windowsie `chmod` steruje
+    # wyłącznie atrybutem „tylko do odczytu”, więc uprawnień tam nie zawęzi —
+    # nie wywoła też błędu. Klucz i tak nie opuszcza tego komputera.
     plik.chmod(0o600)
 
 

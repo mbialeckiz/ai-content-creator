@@ -31,17 +31,30 @@ działa, ale pisze ogólniej. Lista fraz objętych NDA jest nadal przykładowa
 ## Instrukcja dla operatorki
 
 Krok po kroku, dla osoby nietechnicznej: **[INSTRUKCJA.md](INSTRUKCJA.md)** —
-instalacja na Macu, klucz API, opis każdej zakładki, koszty i lista typowych
-problemów. To ten dokument wysyła się osobie, która ma zacząć korzystać
+instalacja na Windowsie i na Macu, klucz API, opis każdej zakładki, koszty
+i lista typowych problemów. To ten dokument wysyła się osobie, która ma zacząć korzystać
 z narzędzia.
 
 ## Uruchomienie
 
+**Windows:** dwuklik na `start.bat`.
 **macOS:** dwuklik na `start.command` (za pierwszym razem prawym przyciskiem
-→ Otwórz, bo macOS blokuje pliki pobrane z internetu). Skrypt sprawdza wersję
-Pythona, buduje środowisko, instaluje zależności i otwiera przeglądarkę.
-Brak klucza API nie zatrzymuje uruchomienia — aplikacja przyjmie go na ekranie
-„Sprawdź środowisko", bez restartu.
+→ Otwórz, bo macOS blokuje pliki pobrane z internetu).
+
+Oba skrypty robią to samo: sprawdzają wersję Pythona, budują środowisko,
+instalują zależności i otwierają przeglądarkę. Brak klucza API nie zatrzymuje
+uruchomienia — aplikacja przyjmie go na ekranie „Sprawdź środowisko", bez
+restartu. Zmiany w jednym skrypcie przenoś do drugiego.
+
+`claude-agent-sdk` dowozi w paczce własny plik wykonywalny CLI (ok. 275 MB),
+więc Node.js nie jest potrzebny na żadnym systemie. Na Windowsie SDK
+**odrzuca** shim `claude.cmd` z npm — liczy się wyłącznie plik z paczki albo
+natywny `claude.exe`.
+
+**`start.bat` nie był uruchomiony na prawdziwym Windowsie** — w środowisku,
+w którym powstawał, nie było takiej maszyny. Logika jest odpowiednikiem
+`start.command`, a kod aplikacji nie zawiera niczego uniksowego, ale pierwsze
+uruchomienie u operatorki warto zrobić razem.
 
 **Ręcznie (dowolny system):**
 
