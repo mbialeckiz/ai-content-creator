@@ -107,6 +107,31 @@ strony (F5) — to naprawdę przerywa żądanie. Aplikacja ostrzeże pytaniem
 Drugie uruchomienie tej samej operacji, gdy pierwsza jeszcze trwa, jest
 blokowane z wyjaśnieniem — dwa naraz to podwójny koszt.
 
+## Grafika: co robi aplikacja, a co Canva
+
+Forces DC publikuje karuzele (4–11 slajdów) i gęste infografiki — aplikacja
+ich nie narysuje i nie udaje, że narysuje. Podział jest taki:
+
+**Aplikacja** pisze **brief graficzny**: wybiera format, rozpisuje slajd po
+slajdzie albo ramkę po ramce i podaje teksty po angielsku.
+
+**Przycisk „Zrób grafikę w Canvie"** składa z tego briefu i identyfikacji
+wizualnej gotowe polecenie do wklejenia Claude'owi z podpiętym konektorem
+Canva. Polecenie zawiera format 4:5, kody kolorów, krój, opis stopki z logo
+i nazwy szablonów. Powstaje w backendzie, bez wywołania modelu — jest
+darmowe i natychmiastowe.
+
+**Podgląd hasła** (zwinięty pod briefem) rysuje prostą planszę. To nie jest
+grafika do publikacji, tylko sposób sprawdzenia, czy hasło działa w kadrze.
+
+### Czego potrzeba po stronie Canvy
+
+Szablony marki zapisane na koncie Canva Pro pod nazwami z `brand-kit.yaml`
+(sekcja `szablony_canva`). Domyślnie: `Forces DC — carousel`,
+`— infographic`, `— key points`, `— event`, `— statement`. Jeśli nazwy się
+nie zgadzają, Claude ich nie znajdzie i złoży projekt od zera — poprawnie
+kolorystycznie, ale bez Waszego układu.
+
 ## Język treści
 
 Forces DC publikuje na LinkedIn **po angielsku** — potwierdzone przez klienta

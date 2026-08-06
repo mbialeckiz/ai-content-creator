@@ -176,3 +176,94 @@ def zbuduj_dane_grafiki(
         "wariant_kolorystyczny": "ciemny" if ciemny else "jasny",
         "ostrzezenia": ostrzezenia,
     }
+
+
+# --- Polecenie do Canvy ---
+#
+# Grafiki karuzelowe i gęste infografiki powstają w Canvie, nie tutaj (patrz
+# baza-wiedzy/wzory-graficzne.md). Zamiast udawać, że aplikacja je narysuje,
+# składamy gotowe polecenie do wklejenia Claude'owi z podpiętym konektorem
+# Canva. Robimy to w backendzie, bez wywołania modelu: wszystkie dane już mamy,
+# więc polecenie jest darmowe i natychmiastowe.
+#
+# Polecenie jest po angielsku, bo w tym języku Forces DC publikuje i w tym
+# języku mają być teksty na grafice.
+
+SZABLONY_DOMYSLNE = {
+    "karuzela": "Forces DC — carousel",
+    "infografika": "Forces DC — infographic",
+    "kluczowe-punkty": "Forces DC — key points",
+    "wydarzenie": "Forces DC — event",
+    "plansza": "Forces DC — statement",
+}
+
+# Polecenie jest w całości po angielsku, więc opisy szablonów też — klucze
+# w brand-kit.yaml zostają po polsku, bo edytuje je operatorka.
+OPISY_SZABLONOW_EN = {
+    "karuzela": "carousel",
+    "infografika": "infographic (numbered list)",
+    "kluczowe-punkty": "key points with icons",
+    "wydarzenie": "event announcement",
+    "plansza": "single statement card",
+}
+
+
+def zbuduj_polecenie_do_canvy(
+    katalog_danych: Path, brief_graficzny: str, haslo: str = ""
+) -> str:
+    """Gotowy tekst do wklejenia Claude'owi z konektorem Canva.
+
+    Część techniczną (format, kolory, krój, stałe elementy) składamy sami —
+    zawsze jest poprawna. Część treściową bierzemy wprost z briefu napisanego
+    przez redaktora, bez przepisywania: to on wie, co ma być na grafice.
+    """
+    kit, _ = wczytaj_brand_kit(katalog_danych)
+    kolory = kit["kolory"]
+    krój = kit["kroje"]["naglowek"].split(",")[0].strip()
+    szablony = {**SZABLONY_DOMYSLNE, **(kit.get("szablony_canva") or {})}
+
+    linie = [
+        "Create a LinkedIn graphic for Forces DC in Canva, using our brand "
+        "template and brand kit.",
+        "",
+        "## Brand specification (do not deviate)",
+        f"- Size: {kit['format']['szerokosc']}×{kit['format']['wysokosc']} px "
+        "(portrait 4:5 — the format LinkedIn displays largest)",
+        f"- Typeface: {krój}, all text",
+        f"- Dark background: {kolory['tlo']} with white text",
+        f"- Light background: {kolory['tlo_alternatywne']} with "
+        f"{kolory['tekst_alternatywny']} text",
+        f"- Accent colour: {kolory['akcent']} — the only accent. Use it for "
+        "step numbers, rules under headings, frames and highlight blocks. "
+        "Never introduce another colour.",
+        "- Frames and boxes: 2–3 px outline, white on dark or black on light",
+        f"- Footer: black bar ({kolory['pasek_stopki']}) across the full width "
+        "with the Forces DC logo centred in it. On a dark background use no "
+        "bar — place the logo directly on the background, bottom left.",
+    ]
+    if kit.get("adres_www"):
+        linie.append(f"- Top of the design: {kit['adres_www']}, centred, small")
+    linie += [
+        "- All text in English",
+        "- No stock photos of people unless I supply one; keep it typographic",
+        "",
+        "## Templates to start from",
+        *[
+            f'- {OPISY_SZABLONOW_EN.get(klucz, klucz)}: "{nazwa}"'
+            for klucz, nazwa in szablony.items()
+        ],
+        "",
+        "## What to make",
+    ]
+
+    if haslo.strip():
+        linie += [f"Key message: {haslo.strip()}", ""]
+
+    linie += [
+        brief_graficzny.strip() or "[brak briefu graficznego — opisz temat sam]",
+        "",
+        "If the brief describes a carousel, create one page per slide. "
+        "If it describes an infographic, keep it to a single page. "
+        "Show me the result and wait before making any changes.",
+    ]
+    return "\n".join(linie)

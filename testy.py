@@ -473,6 +473,34 @@ def test_tresc_powstaje_po_angielsku() -> None:
                 "po polsku" in getattr(silnik, nazwa))
 
 
+def test_polecenie_do_canvy() -> None:
+    from app import grafika
+
+    katalog = katalog_testowy()
+    polecenie = grafika.zbuduj_polecenie_do_canvy(
+        katalog,
+        brief_graficzny="**Format:** infographic.\n**Frame 1:** Something.",
+        haslo="Power is no longer the bottleneck.",
+    )
+
+    sprawdz("polecenie niesie format 4:5", "1080×1350" in polecenie)
+    sprawdz("polecenie niesie kolory marki",
+            "#32373C" in polecenie and "#BBA470" in polecenie)
+    sprawdz("polecenie niesie krój", "Montserrat" in polecenie)
+    sprawdz("polecenie opisuje pasek stopki z logo", "black bar" in polecenie)
+    sprawdz("polecenie wskazuje szablony po nazwie", "Forces DC — carousel" in polecenie)
+    sprawdz("brief redaktora trafia do polecenia bez przepisywania",
+            "**Frame 1:** Something." in polecenie)
+    sprawdz("hasło trafia do polecenia", "Power is no longer the bottleneck." in polecenie)
+    sprawdz("polecenie jest po angielsku, bez polskich etykiet",
+            "karuzela:" not in polecenie and "infografika:" not in polecenie)
+    sprawdz("polecenie każe pokazać wynik przed zmianami", "wait before" in polecenie)
+
+    # Brak briefu nie może dać polecenia, które wygląda na kompletne.
+    puste = grafika.zbuduj_polecenie_do_canvy(katalog, brief_graficzny="   ")
+    sprawdz("brak briefu jest zgłoszony wprost", "brak briefu" in puste)
+
+
 def test_krojem_jest_montserrat() -> None:
     from app import grafika
 

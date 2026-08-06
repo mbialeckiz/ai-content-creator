@@ -687,19 +687,27 @@ function elementWynikuPosta(post, sciezkaPliku, czesciowy = false) {
       <div class="karta">
         <strong>Brief graficzny</strong>
         <p class="podglad-tresc" style="margin:0.5rem 0">${prostyMarkdown(post.brief_graficzny)}</p>
-        <button class="przycisk-drugorzedny" data-kopiuj-brief>Kopiuj dla Sikory</button>
-      </div>
-      <div class="karta">
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:1rem">
-          <strong>Grafika do posta</strong>
-          <button class="przycisk-glowny" data-zrob-grafike="${idWyniku}">Zrób grafikę</button>
+        <div class="pasek-narzedzi" style="margin:0">
+          <button class="przycisk-glowny" data-do-canvy="${idWyniku}">Zrób grafikę w Canvie</button>
+          <button class="przycisk-drugorzedny" data-kopiuj-brief>Kopiuj sam brief</button>
         </div>
-        <p class="szczegoly">
-          Powstaje z Waszej identyfikacji wizualnej. Hasło dobiera asystent —
-          możesz je poprawić przed pobraniem.
-        </p>
-        <div class="obszar-grafiki" data-grafika-dla="${idWyniku}" hidden></div>
+        <div class="obszar-canvy" data-canva-dla="${idWyniku}" hidden></div>
       </div>
+      <details class="karta">
+        <summary>
+          <strong>Podgląd hasła</strong>
+          <span class="szczegoly">prosta plansza — sprawdź, czy hasło działa</span>
+        </summary>
+        <p class="szczegoly">
+          To nie jest gotowa grafika do publikacji, tylko sposób, żeby zobaczyć
+          hasło w kadrze, zanim pójdzie do Canvy. Karuzele i infografiki
+          składasz w Canvie przyciskiem powyżej.
+        </p>
+        <div style="margin-top:0.5rem">
+          <button class="przycisk-drugorzedny" data-zrob-grafike="${idWyniku}">Dobierz hasło i pokaż</button>
+        </div>
+        <div class="obszar-grafiki" data-grafika-dla="${idWyniku}" hidden></div>
+      </details>
       <div class="karta karta-ostrzegawcza">
         <h3 style="color:var(--ostrzezenie)">Braki</h3>
         ${brakiHtml}
@@ -756,6 +764,14 @@ function podepnijPrzyciskiKopiowania(zakres = document) {
     if (przycisk.dataset.podpieto) return;
     przycisk.dataset.podpieto = "1";
     przycisk.addEventListener("click", () => zrobGrafike(przycisk));
+  });
+
+  zakres.querySelectorAll("[data-do-canvy]").forEach((przycisk) => {
+    if (przycisk.dataset.podpieto) return;
+    przycisk.dataset.podpieto = "1";
+    przycisk.addEventListener("click", () =>
+      przygotujPolecenieDoCanvy(przycisk, wynikDlaPrzycisku(przycisk))
+    );
   });
 
   zakres.querySelectorAll("[data-popraw]").forEach((przycisk) => {
@@ -901,6 +917,62 @@ function odswiezOznaczenieWybranego(kontener, wybrany) {
 
 function kartaWariantuDla(przycisk) {
   return przycisk.closest(".karta-wariantu");
+}
+
+// --- Grafika w Canvie ---
+//
+// Karuzele i gęste infografiki, które Forces DC realnie publikuje, powstają
+// w Canvie — aplikacja ich nie narysuje i nie udaje, że narysuje. Zamiast tego
+// składa gotowe polecenie do wklejenia Claude'owi z podpiętym konektorem
+// Canva. Nie kosztuje nic: polecenie powstaje z identyfikacji wizualnej
+// i briefu, który redaktor już napisał.
+
+async function przygotujPolecenieDoCanvy(przycisk, wynik) {
+  const id = przycisk.dataset.doCanvy;
+  const obszar = document.querySelector(`[data-canva-dla="${id}"]`);
+  obszar.hidden = false;
+  obszar.innerHTML = `<p class="placeholder">Składam polecenie…</p>`;
+
+  let dane;
+  try {
+    const odpowiedz = await fetch("/api/canva-polecenie", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        brief_graficzny: wynik.brief_graficzny || "",
+        haslo: wynik.warianty?.[wynik.wybrany ?? 0]?.tresc?.split("\n")[0] || "",
+      }),
+    });
+    dane = await odpowiedz.json();
+    if (!odpowiedz.ok) throw new Error(dane.blad || `HTTP ${odpowiedz.status}`);
+  } catch (blad) {
+    obszar.innerHTML = `<p class="instrukcja-naprawy">Nie udało się przygotować polecenia (${escapeHtml(blad.message)}).</p>`;
+    return;
+  }
+
+  obszar.innerHTML = `
+    <ol class="instrukcja-canvy">
+      <li>Skopiuj polecenie poniżej.</li>
+      <li>Otwórz <strong>claude.ai</strong> i upewnij się, że masz włączony
+          konektor Canva (ikona spinacza pod polem wiadomości).</li>
+      <li>Wklej polecenie i wyślij. Claude założy projekt w Waszej Canvie
+          i przyśle link.</li>
+      <li>Otwórz projekt w Canvie i popraw, co trzeba — to szkic, nie wersja
+          do publikacji bez oglądania.</li>
+    </ol>
+    <textarea class="monospace" rows="14" style="width:100%" data-tresc-canvy="${id}"></textarea>
+    <div class="pasek-narzedzi" style="margin-top:0.5rem">
+      <button class="przycisk-glowny" data-kopiuj-canve="${id}">Kopiuj polecenie</button>
+      <a class="przycisk-drugorzedny" href="https://claude.ai/new" target="_blank" rel="noopener">Otwórz claude.ai</a>
+    </div>
+  `;
+  // Treść wstawiamy przez `value`, nie przez HTML — polecenie zawiera znaki,
+  // które w szablonie trzeba by uciekać, a tu nie ma takiej potrzeby.
+  const pole = obszar.querySelector(`[data-tresc-canvy="${id}"]`);
+  pole.value = dane.polecenie;
+  obszar
+    .querySelector(`[data-kopiuj-canve="${id}"]`)
+    .addEventListener("click", (zdarzenie) => kopiujDoSchowka(pole.value, zdarzenie.target));
 }
 
 // --- Grafika do posta ---

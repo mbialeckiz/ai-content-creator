@@ -59,3 +59,14 @@ adres_www: "www.forces.no"
 format:
   szerokosc: 1080
   wysokosc: 1350
+
+# Nazwy szablonów w Canvie, do których odwołuje się polecenie generowane
+# przyciskiem „Zrób grafikę w Canvie". Muszą się zgadzać z nazwami, pod
+# którymi szablony są zapisane na koncie — inaczej Claude ich nie znajdzie
+# i złoży projekt od zera.
+szablony_canva:
+  karuzela: "Forces DC — carousel"
+  infografika: "Forces DC — infographic"
+  kluczowe-punkty: "Forces DC — key points"
+  wydarzenie: "Forces DC — event"
+  plansza: "Forces DC — statement"

@@ -677,6 +677,27 @@ async def api_grafika_podglad(dane: RecznaGrafika) -> JSONResponse:
     )
 
 
+class PolecenieCanvy(BaseModel):
+    brief_graficzny: str
+    haslo: str = ""
+
+
+@app.post("/api/canva-polecenie", response_model=None)
+async def api_polecenie_do_canvy(dane: PolecenieCanvy) -> JSONResponse:
+    """Gotowe polecenie do wklejenia Claude'owi z konektorem Canva.
+
+    Bez wywołania modelu — składamy je z identyfikacji wizualnej i briefu,
+    który redaktor już napisał. Jest więc darmowe i natychmiastowe.
+    """
+    return JSONResponse(
+        {
+            "polecenie": grafika.zbuduj_polecenie_do_canvy(
+                katalog_danych(), dane.brief_graficzny, dane.haslo
+            )
+        }
+    )
+
+
 @app.get("/api/brand-kit")
 async def api_brand_kit() -> JSONResponse:
     katalog = katalog_danych()
