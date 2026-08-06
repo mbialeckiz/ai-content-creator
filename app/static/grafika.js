@@ -100,18 +100,21 @@ async function narysujGrafike(canvas, dane) {
     k.globalAlpha = 1;
   }
 
-  // Kreska nad stopką oddziela hasło od identyfikacji nadawcy.
   const yStopki = wysokosc - MARGINES;
+  const logo = await wczytajObraz(dane.logo);
+
+  // Kreska nad stopką oddziela hasło od identyfikacji nadawcy. Rysujemy ją
+  // dopiero po wczytaniu logo, bo jej wysokość zależy od wysokości znaku —
+  // wcześniej stała na sztywno i przy szerokim logotypie na niego nachodziła.
+  const wysokoscLogo = logo ? dane.wysokosc_logo : 56;
   k.strokeStyle = dane.kolory.akcent;
   k.lineWidth = 3;
   k.beginPath();
-  k.moveTo(MARGINES + 14, yStopki - 74);
-  k.lineTo(MARGINES + 14 + 96, yStopki - 74);
+  k.moveTo(MARGINES + 14, yStopki - wysokoscLogo - 34);
+  k.lineTo(MARGINES + 14 + 96, yStopki - wysokoscLogo - 34);
   k.stroke();
 
-  const logo = await wczytajObraz(dane.logo);
   if (logo) {
-    const wysokoscLogo = dane.wysokosc_logo;
     const szerokoscLogo = (logo.width / logo.height) * wysokoscLogo;
     k.drawImage(logo, MARGINES + 14, yStopki - wysokoscLogo, szerokoscLogo, wysokoscLogo);
   } else {

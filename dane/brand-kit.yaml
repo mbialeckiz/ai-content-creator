@@ -35,13 +35,15 @@ kroje:
   naglowek: "Avenir Next, Avenir, Helvetica Neue, Helvetica, sans-serif"
   podpis: "Avenir Next, Avenir, Helvetica Neue, Helvetica, sans-serif"
 
-# Logo: biały napis FORCES z członem DC w kolorze akcentu, litery rozstrzelone
-# i lekko techniczne. Wgraj plik przez zakładkę Styl → Identyfikacja wizualna,
-# a potem wpisz tu jego nazwę. [DO UZUPEŁNIENIA: pliki logo — klientka
-# dostarcza wersje SVG.]
+# Logo: napis FORCES z członem DC w kolorze akcentu. Pliki wyciągnięte
+# z paczki PDF od klientki — wektorowe, bez tła, przycięte do samego znaku.
+# `plik` to wersja na jasne tło (czarny napis), `plik_na_ciemnym` na ciemne
+# (biały napis). Nowe warianty wgrywasz w zakładce Styl.
 logo:
-  plik: ""
-  plik_na_ciemnym: ""
+  plik: "forces-dc-na-jasnym.svg"
+  plik_na_ciemnym: "forces-dc-na-ciemnym.svg"
+  # Znak jest bardzo szeroki (proporcja ok. 8,5:1), więc 64 px wysokości daje
+  # ok. 540 px szerokości na grafice 1200 px — mniej więcej wypełnia kolumnę.
   wysokosc_px: 64
 
 format:
