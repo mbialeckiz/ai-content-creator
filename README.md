@@ -51,6 +51,20 @@ więc Node.js nie jest potrzebny na żadnym systemie. Na Windowsie SDK
 **odrzuca** shim `claude.cmd` z npm — liczy się wyłącznie plik z paczki albo
 natywny `claude.exe`.
 
+**Windows blokuje `start.bat` pobrany z internetu.** Pliki wypakowane z ZIP-a
+dziedziczą znacznik pochodzenia (mark of the web). SmartScreen daje wtedy
+„Uruchom mimo to", ale **Smart App Control (Inteligentna kontrola aplikacji)
+nie daje żadnego obejścia w oknie dialogowym**. Rozwiązania, w kolejności:
+
+1. Odblokować ZIP **przed** rozpakowaniem: Właściwości → *Odblokuj*
+2. Na już rozpakowanym folderze:
+   `Get-ChildItem -Path <folder> -Recurse | Unblock-File`
+3. Ostateczność: uruchomić aplikację poleceniami z wiersza poleceń, bez
+   pliku `.bat` — opisane w INSTRUKCJA.md jako „Plan B"
+
+Nie zalecamy wyłączania Smart App Control: raz wyłączonego nie da się włączyć
+z powrotem bez ponownej instalacji systemu.
+
 **`start.bat` nie był uruchomiony na prawdziwym Windowsie** — w środowisku,
 w którym powstawał, nie było takiej maszyny. Logika jest odpowiednikiem
 `start.command`, a kod aplikacji nie zawiera niczego uniksowego, ale pierwsze

@@ -76,10 +76,23 @@ Marcin przysyła Ci link do repozytorium na GitHubie albo gotowy plik ZIP.
 
 Dalej tak samo:
 
-4. Rozpakuj pobrany plik ZIP:
-   - **Windows:** prawy przycisk na pliku → **Wyodrębnij wszystkie** → *Wyodrębnij*
+4. **Windows — zrób to ZANIM rozpakujesz.** Kliknij pobrany plik ZIP prawym
+   przyciskiem → **Właściwości**. Na dole zakładki *Ogólne*, jeśli zobaczysz
+   napis „Ten plik pochodzi z innego komputera…", zaznacz **Odblokuj**
+   i kliknij **OK**.
+
+   > To jedna z najważniejszych rzeczy w całej instrukcji. Windows oznacza
+   > pliki pobrane z internetu, a ten znacznik dziedziczy wszystko, co z nich
+   > wypakujesz. Bez odblokowania system zablokuje uruchomienie aplikacji
+   > komunikatem, którego **nie da się kliknąć „mimo to"**.
+   >
+   > Jeśli okienko Właściwości nie ma pola „Odblokuj" — w porządku,
+   > po prostu przejdź dalej.
+
+5. Rozpakuj plik ZIP:
+   - **Windows:** prawy przycisk → **Wyodrębnij wszystkie** → *Wyodrębnij*
    - **Mac:** dwuklik na pliku
-5. **Przenieś powstały folder do katalogu Dokumenty** i nazwij go krótko,
+6. **Przenieś powstały folder do katalogu Dokumenty** i nazwij go krótko,
    np. `Forces-DC-Studio`
 
 > **Ważne:** nie zostawiaj folderu w Pobranych. Aplikacja zapisuje w nim
@@ -102,8 +115,38 @@ nie zadziała. Wpiszesz go za chwilę, w kroku 5.
 
 1. Otwórz folder `Forces-DC-Studio`
 2. Kliknij dwukrotnie plik **`start.bat`**
-3. Jeśli pojawi się niebieskie okno *„System Windows ochronił Twój komputer"*
-   — kliknij **Więcej informacji**, a potem **Uruchom mimo to**
+3. Może pojawić się jedno z dwóch okien:
+
+   - *„System Windows ochronił Twój komputer"* (niebieskie) — kliknij
+     **Więcej informacji**, potem **Uruchom mimo to**. To zwykły SmartScreen.
+   - *„Funkcja Inteligentna kontrola aplikacji zablokowała aplikację…"*
+     (szare, tylko **OK** i *Pobierz aplikacje ze sklepu Store*) — tego okna
+     **nie da się obejść klikaniem**. Przejdź do sekcji poniżej.
+
+### Jeśli zablokowała Inteligentna kontrola aplikacji
+
+Ten mechanizm blokuje pliki oznaczone jako pobrane z internetu i nie ma
+przycisku „uruchom mimo to". Nie wyłączaj go — raz wyłączonego nie da się
+włączyć z powrotem bez ponownej instalacji Windowsa.
+
+Zamiast tego zdejmij znacznik pochodzenia z plików:
+
+1. Naciśnij `Win`, wpisz `powershell`, kliknij **Windows PowerShell**
+2. Wklej poniższą linię, podmieniając ścieżkę na swoją, i naciśnij `Enter`:
+
+   ```
+   Get-ChildItem -Path "$HOME\Documents\Forces-DC-Studio" -Recurse | Unblock-File
+   ```
+
+   > Najprościej wkleić `Get-ChildItem -Path "` , potem przeciągnąć folder
+   > z Eksploratora do okna PowerShella (sam wpisze ścieżkę) i dopisać
+   > resztę: `" -Recurse | Unblock-File`
+
+3. Polecenie nic nie wypisuje — to znaczy, że się udało
+4. Spróbuj uruchomić `start.bat` ponownie
+
+**Jeśli to nie pomoże**, przejdź do „Plan B" na końcu instrukcji —
+aplikację da się uruchomić bez pliku `.bat`.
 
 **Mac:**
 
@@ -367,6 +410,12 @@ To zwykłe pliki tekstowe — możesz je otworzyć i poprawić poza aplikacją.
 → **Więcej informacji** → **Uruchom mimo to**. To standardowe ostrzeżenie
 dla plików pobranych z internetu.
 
+**Windows: „Funkcja Inteligentna kontrola aplikacji zablokowała aplikację"**
+→ To inny, ostrzejszy mechanizm — w tym oknie nie ma opcji „uruchom mimo to".
+Zdejmij znacznik pochodzenia poleceniem `Unblock-File` (krok 4 instalacji)
+albo skorzystaj z „Planu B" poniżej. **Nie wyłączaj tej funkcji** — raz
+wyłączonej nie da się włączyć bez ponownej instalacji systemu.
+
 **Windows: okno mignęło i zniknęło**
 → Otwórz wiersz poleceń (`Win + R` → `cmd`), przeciągnij do niego plik
 `start.bat` i naciśnij `Enter`. Okno zostanie otwarte i zobaczysz komunikat.
@@ -398,6 +447,50 @@ administratorowi.
 
 **Coś innego**
 → Zrób zrzut ekranu czarnego okna i wyślij Marcinowi. Tam widać, co się stało.
+
+---
+
+# Plan B — uruchomienie bez pliku `start.bat`
+
+Jeśli Windows uparcie blokuje `start.bat`, aplikację można uruchomić,
+wpisując polecenia ręcznie. Blokada dotyczy pliku skryptu, nie samej
+aplikacji, więc ta droga działa zawsze.
+
+**Robisz to raz:**
+
+1. Otwórz folder `Forces-DC-Studio` w Eksploratorze
+2. Kliknij w pasek adresu na górze okna, wpisz `cmd` i naciśnij `Enter`
+   — otworzy się wiersz poleceń już we właściwym folderze
+3. Wklejaj poniższe linie **pojedynczo**, każdą zakończ `Enter`
+   i poczekaj, aż się wykona:
+
+   ```
+   py -3 -m venv .venv
+   ```
+   ```
+   .venv\Scripts\python.exe -m pip install -r requirements.txt
+   ```
+   ```
+   copy .env.example .env
+   ```
+
+   Druga linia trwa 2–3 minuty.
+
+**Za każdym razem, gdy chcesz uruchomić aplikację:**
+
+1. Otwórz folder, kliknij w pasek adresu, wpisz `cmd`, `Enter`
+2. Wklej i naciśnij `Enter`:
+
+   ```
+   .venv\Scripts\python.exe -m uvicorn app.main:app --port 8420
+   ```
+
+3. Otwórz w przeglądarce <http://localhost:8420>
+
+Okno wiersza poleceń musi zostać otwarte, dopóki pracujesz.
+
+> Żeby nie wklejać tego za każdym razem: po pierwszym uruchomieniu naciśnij
+> w tym oknie strzałkę w górę — wróci ostatnie polecenie.
 
 ---
 
